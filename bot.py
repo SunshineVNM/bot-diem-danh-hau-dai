@@ -812,14 +812,8 @@ async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 logging.error(f"Error sending report to admin {admin_id}: {e}")
-                try:
-                    # Thông báo lỗi trong nhóm
-                    await context.bot.send_message(
-                        chat_id=group_id,
-                        text=f'❌ Không thể gửi báo cáo cho admin ID: {admin_id}'
-                    )
-                except:
-                    pass
+                # Bỏ thông báo lỗi trong nhóm
+                continue
 
 async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
     await send_daily_reports(context)
