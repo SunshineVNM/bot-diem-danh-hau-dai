@@ -651,63 +651,83 @@ async def handle_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def record_activity(group_id, user_id, user_name, action, start_time, end_time, duration):
     """Record activity in Excel file."""
-    filename = get_group_excel_filename(group_id)
-    
-    # Convert to timezone-naive datetime for Excel
-    if start_time.tzinfo is not None:
-        start_time = start_time.replace(tzinfo=None)
-    if end_time.tzinfo is not None:
-        end_time = end_time.replace(tzinfo=None)
-    
-    data = {
-        'ID': user_id,
-        'Tên': user_name,
-        'Hành động': action,
-        'Thời gian bắt đầu': start_time,
-        'Thời gian kết thúc': end_time,
-        'Tổng thời gian (phút)': duration,
-        'Vi phạm': 'Có' if duration > TIME_LIMITS[action] else 'Không'
-    }
-    
-    df = pd.DataFrame([data])
-    
     try:
+        filename = get_group_excel_filename(group_id)
+        
+        # Convert to timezone-naive datetime for Excel
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
+        if end_time.tzinfo is not None:
+            end_time = end_time.replace(tzinfo=None)
+        
+        data = {
+            'ID': user_id,
+            'Tên': user_name,
+            'Hành động': action,
+            'Thời gian bắt đầu': start_time,
+            'Thời gian kết thúc': end_time,
+            'Tổng thời gian (phút)': duration,
+            'Vi phạm': 'Có' if duration > TIME_LIMITS[action] else 'Không'
+        }
+        
+        df = pd.DataFrame([data])
+        
+        # Tạo thư mục nếu chưa tồn tại
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        
+        # Kiểm tra file có tồn tại không
         if os.path.exists(filename):
             try:
+                # Đọc file hiện có
                 existing_df = pd.read_excel(filename)
-                df = pd.concat([existing_df, df])
+                # Thêm dữ liệu mới
+                df = pd.concat([existing_df, df], ignore_index=True)
             except Exception as e:
                 logging.error(f"Error reading existing Excel file: {e}")
                 # Nếu không đọc được file cũ, tạo file mới
         
-        # Tạo Excel writer với engine xlsxwriter
-        with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Sheet1')
-            
-            # Lấy workbook và worksheet
-            workbook = writer.book
-            worksheet = writer.sheets['Sheet1']
-            
-            # Tạo format cho vi phạm (màu đỏ)
-            red_format = workbook.add_format({'font_color': 'red'})
-            
-            # Áp dụng format cho cột Vi phạm
-            for row_num, value in enumerate(df['Vi phạm'], start=1):
-                if value == 'Có':
-                    worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value, red_format)
-                else:
-                    worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value)
-    except Exception as e:
-        logging.error(f"Error writing to Excel file: {e}")
-        # Nếu không ghi được file, lưu vào file tạm
-        temp_filename = f"{filename}.temp"
+        # Ghi file Excel
         try:
-            df.to_excel(temp_filename, index=False)
-            if os.path.exists(filename):
-                os.remove(filename)
-            os.rename(temp_filename, filename)
-        except Exception as e2:
-            logging.error(f"Error writing to temp file: {e2}")
+            with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                
+                # Lấy workbook và worksheet
+                workbook = writer.book
+                worksheet = writer.sheets['Sheet1']
+                
+                # Tạo format cho vi phạm (màu đỏ)
+                red_format = workbook.add_format({'font_color': 'red'})
+                
+                # Áp dụng format cho cột Vi phạm
+                for row_num, value in enumerate(df['Vi phạm'], start=1):
+                    if value == 'Có':
+                        worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value, red_format)
+                    else:
+                        worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value)
+                        
+            logging.info(f"Successfully wrote to Excel file: {filename}")
+        except Exception as e:
+            logging.error(f"Error writing to Excel file: {e}")
+            # Thử ghi file tạm
+            temp_filename = f"{filename}.temp"
+            try:
+                df.to_excel(temp_filename, index=False)
+                if os.path.exists(filename):
+                    os.remove(filename)
+                os.rename(temp_filename, filename)
+                logging.info(f"Successfully wrote to temp file and renamed: {filename}")
+            except Exception as e2:
+                logging.error(f"Error writing to temp file: {e2}")
+                
+    except Exception as e:
+        logging.error(f"Error in record_activity: {e}")
+        # Ghi log chi tiết lỗi
+        logging.error(f"Group ID: {group_id}")
+        logging.error(f"User ID: {user_id}")
+        logging.error(f"Action: {action}")
+        logging.error(f"Start time: {start_time}")
+        logging.error(f"End time: {end_time}")
+        logging.error(f"Duration: {duration}")
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate and send daily report."""
