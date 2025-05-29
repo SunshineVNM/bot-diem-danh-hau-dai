@@ -653,6 +653,15 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
     """Record activity in Excel file."""
     try:
         filename = get_group_excel_filename(group_id)
+        logging.info(f"=== Bắt đầu ghi hoạt động ===")
+        logging.info(f"Group ID: {group_id}")
+        logging.info(f"User ID: {user_id}")
+        logging.info(f"User Name: {user_name}")
+        logging.info(f"Action: {action}")
+        logging.info(f"Start Time: {start_time}")
+        logging.info(f"End Time: {end_time}")
+        logging.info(f"Duration: {duration} phút")
+        logging.info(f"Excel File: {filename}")
         
         # Convert to timezone-naive datetime for Excel
         if start_time.tzinfo is not None:
@@ -671,23 +680,27 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
         }
         
         df = pd.DataFrame([data])
+        logging.info(f"DataFrame created with {len(df)} rows")
         
         # Tạo thư mục nếu chưa tồn tại
         os.makedirs(os.path.dirname(filename), exist_ok=True)
+        logging.info(f"Directory created/checked: {os.path.dirname(filename)}")
         
         # Kiểm tra file có tồn tại không
         if os.path.exists(filename):
             try:
-                # Đọc file hiện có
+                logging.info(f"Reading existing Excel file: {filename}")
                 existing_df = pd.read_excel(filename)
-                # Thêm dữ liệu mới
+                logging.info(f"Existing file has {len(existing_df)} rows")
                 df = pd.concat([existing_df, df], ignore_index=True)
+                logging.info(f"Combined DataFrame has {len(df)} rows")
             except Exception as e:
                 logging.error(f"Error reading existing Excel file: {e}")
-                # Nếu không đọc được file cũ, tạo file mới
+                logging.info("Creating new Excel file")
         
         # Ghi file Excel
         try:
+            logging.info(f"Writing to Excel file: {filename}")
             with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
                 
@@ -706,16 +719,19 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
                         worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value)
                         
             logging.info(f"Successfully wrote to Excel file: {filename}")
+            logging.info(f"File size: {os.path.getsize(filename)} bytes")
         except Exception as e:
             logging.error(f"Error writing to Excel file: {e}")
             # Thử ghi file tạm
             temp_filename = f"{filename}.temp"
             try:
+                logging.info(f"Attempting to write to temp file: {temp_filename}")
                 df.to_excel(temp_filename, index=False)
                 if os.path.exists(filename):
                     os.remove(filename)
                 os.rename(temp_filename, filename)
                 logging.info(f"Successfully wrote to temp file and renamed: {filename}")
+                logging.info(f"Final file size: {os.path.getsize(filename)} bytes")
             except Exception as e2:
                 logging.error(f"Error writing to temp file: {e2}")
                 
@@ -728,6 +744,8 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
         logging.error(f"Start time: {start_time}")
         logging.error(f"End time: {end_time}")
         logging.error(f"Duration: {duration}")
+    finally:
+        logging.info("=== Kết thúc ghi hoạt động ===")
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate and send daily report."""
@@ -783,60 +801,83 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
     """Send daily reports to all admins in all groups."""
-    current_date = datetime.now().strftime("%Y%m%d")
-    
-    for group_id, settings in group_settings.items():
-        if not settings['is_setup']:
-            continue
-            
-        filename = f'activities_group_{group_id}_{current_date}.xlsx'
-        if not os.path.exists(filename):
-            continue
-            
-        group_name = settings['group_name']
-        admin_ids = settings['admin_ids']
-        report_group_id = settings.get('report_group_id')
+    try:
+        current_date = datetime.now().strftime("%Y%m%d")
+        logging.info(f"Starting daily report sending for date: {current_date}")
         
-        # Gửi báo cáo vào nhóm được chỉ định
-        if report_group_id:
+        for group_id, settings in group_settings.items():
             try:
-                await context.bot.send_message(
-                    chat_id=report_group_id,
-                    text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                         f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
-                )
-                await context.bot.send_document(
-                    chat_id=report_group_id,
-                    document=filename,
-                    caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
-                )
-            except Exception as e:
-                logging.error(f"Error sending report to report group {report_group_id}: {e}")
-        
-        # Gửi báo cáo riêng cho từng admin
-        for admin_id in admin_ids:
-            try:
-                # Gửi thông báo trước
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                         f'Vui lòng đợi trong giây lát...'
-                )
+                if not settings['is_setup']:
+                    logging.info(f"Group {group_id} is not setup, skipping")
+                    continue
+                    
+                filename = f'activities_group_{group_id}_{current_date}.xlsx'
+                logging.info(f"Checking for report file: {filename}")
                 
-                # Gửi file Excel
-                await context.bot.send_document(
-                    chat_id=admin_id,
-                    document=filename,
-                    caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                           f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
-                )
+                if not os.path.exists(filename):
+                    logging.warning(f"Report file not found: {filename}")
+                    continue
+                    
+                group_name = settings['group_name']
+                admin_ids = settings['admin_ids']
+                report_group_id = settings.get('report_group_id')
+                
+                # Gửi báo cáo vào nhóm được chỉ định
+                if report_group_id:
+                    try:
+                        logging.info(f"Sending report to report group {report_group_id}")
+                        await context.bot.send_message(
+                            chat_id=report_group_id,
+                            text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
+                                 f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
+                        )
+                        await context.bot.send_document(
+                            chat_id=report_group_id,
+                            document=filename,
+                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
+                        )
+                        logging.info(f"Successfully sent report to report group {report_group_id}")
+                    except Exception as e:
+                        logging.error(f"Error sending report to report group {report_group_id}: {e}")
+                
+                # Gửi báo cáo riêng cho từng admin
+                for admin_id in admin_ids:
+                    try:
+                        logging.info(f"Sending report to admin {admin_id}")
+                        # Gửi thông báo trước
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
+                                 f'Vui lòng đợi trong giây lát...'
+                        )
+                        
+                        # Gửi file Excel
+                        await context.bot.send_document(
+                            chat_id=admin_id,
+                            document=filename,
+                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
+                                   f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
+                        )
+                        logging.info(f"Successfully sent report to admin {admin_id}")
+                    except Exception as e:
+                        logging.error(f"Error sending report to admin {admin_id}: {e}")
+                        continue
+                        
             except Exception as e:
-                logging.error(f"Error sending report to admin {admin_id}: {e}")
-                # Bỏ thông báo lỗi trong nhóm
+                logging.error(f"Error processing group {group_id}: {e}")
                 continue
+                
+    except Exception as e:
+        logging.error(f"Error in send_daily_reports: {e}")
 
 async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
-    await send_daily_reports(context)
+    """Job to send daily reports."""
+    try:
+        logging.info("Starting daily report job")
+        await send_daily_reports(context)
+        logging.info("Daily report job completed")
+    except Exception as e:
+        logging.error(f"Error in send_daily_reports_job: {e}")
 
 async def safe_send_message(bot, chat_id, text, reply_to_message_id=None):
     while True:
