@@ -73,9 +73,18 @@ def create_keyboard():
 
 def get_group_excel_filename(group_id):
     """Generate Excel filename for a specific group."""
+    # Tạo thư mục reports nếu chưa tồn tại
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+    os.makedirs(reports_dir, exist_ok=True)
+    
+    # Tạo tên file với đường dẫn đầy đủ
     utc_plus_7 = pytz.timezone('Asia/Bangkok')
     now = datetime.now(utc_plus_7)
-    return f'activities_group_{group_id}_{now.strftime("%Y%m%d")}.xlsx'
+    filename = f'activities_group_{group_id}_{now.strftime("%Y%m%d")}.xlsx'
+    full_path = os.path.join(reports_dir, filename)
+    
+    logging.info(f"Excel file will be saved to: {full_path}")
+    return full_path
 
 def is_superadmin(user_id, chat_id):
     """Check if user is superadmin in the group or là ID trong .env."""
@@ -525,7 +534,7 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
             
             # Ghi log hoạt động
             group_id = update.effective_chat.id
-            record_activity(
+            success = record_activity(
                 group_id, user_id, update.effective_user.full_name,
                 current_action, start_time, end_time, duration
             )
@@ -536,14 +545,16 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     f'⚠️ Vi phạm thời gian!\n'
                     f'Hành động: {current_action}\n'
                     f'Thời gian cho phép: {TIME_LIMITS[current_action]} phút\n'
-                    f'Thời gian thực tế: {duration:.1f} phút',
+                    f'Thời gian thực tế: {duration:.1f} phút\n'
+                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}',
                     reply_markup=activity_keyboard
                 )
             else:
                 await update.message.reply_text(
                     f'✅🎉 Hoàn thành!\n'
                     f'Hành động: {current_action}\n'
-                    f'Thời gian: {duration:.1f} phút',
+                    f'Thời gian: {duration:.1f} phút\n'
+                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}',
                     reply_markup=activity_keyboard
                 )
             
@@ -651,6 +662,7 @@ async def handle_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def record_activity(group_id, user_id, user_name, action, start_time, end_time, duration):
     """Record activity in Excel file."""
+    success = False
     try:
         filename = get_group_excel_filename(group_id)
         logging.info(f"=== Bắt đầu ghi hoạt động ===")
@@ -720,6 +732,7 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
                         
             logging.info(f"Successfully wrote to Excel file: {filename}")
             logging.info(f"File size: {os.path.getsize(filename)} bytes")
+            success = True
         except Exception as e:
             logging.error(f"Error writing to Excel file: {e}")
             # Thử ghi file tạm
@@ -732,6 +745,7 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
                 os.rename(temp_filename, filename)
                 logging.info(f"Successfully wrote to temp file and renamed: {filename}")
                 logging.info(f"Final file size: {os.path.getsize(filename)} bytes")
+                success = True
             except Exception as e2:
                 logging.error(f"Error writing to temp file: {e2}")
                 
@@ -746,6 +760,7 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
         logging.error(f"Duration: {duration}")
     finally:
         logging.info("=== Kết thúc ghi hoạt động ===")
+        return success
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate and send daily report."""
