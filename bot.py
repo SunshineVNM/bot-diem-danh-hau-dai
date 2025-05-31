@@ -782,36 +782,42 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Chỉ admin hoặc superadmin mới có thể sử dụng lệnh này.')
         return
 
-    # Lấy tên file Excel thực tế (bỏ qua file tạm)
+    # Lấy tên file Excel thực tế
     current_date = datetime.now().strftime("%Y%m%d")
     filename = f'activities_group_{chat_id}_{current_date}.xlsx'
-    logging.info(f"Looking for report file: {filename}")
+    full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
+    logging.info(f"Looking for report file: {full_path}")
     
-    # Kiểm tra xem file có tồn tại không (bỏ qua file tạm)
-    if not os.path.exists(filename):
-        logging.warning(f"Report file does not exist: {filename}")
+    # Kiểm tra xem file có tồn tại không
+    if not os.path.exists(full_path):
+        logging.warning(f"Report file does not exist: {full_path}")
         await update.message.reply_text('📊 Chưa có dữ liệu hoạt động nào trong ngày.')
         return
         
     if filename.startswith('~$'):
-        logging.warning(f"Report file is a temporary file: {filename}")
+        logging.warning(f"Report file is a temporary file: {full_path}")
         await update.message.reply_text('📊 Chưa có dữ liệu hoạt động nào trong ngày.')
         return
 
     # Log thông tin file
-    file_size = os.path.getsize(filename)
+    file_size = os.path.getsize(full_path)
     logging.info(f"Report file exists, size: {file_size} bytes")
 
     group_name = group_settings[chat_id]['group_name']
     try:
         logging.info(f"Sending report for group {group_name}")
-        await update.message.reply_document(
-            document=filename,
-            caption=f'📊 Báo cáo hoạt động ngày hôm nay - Nhóm {group_name}'
-        )
+        # Mở file trong chế độ binary
+        with open(full_path, 'rb') as f:
+            await update.message.reply_document(
+                document=f,
+                filename=filename,
+                caption=f'📊 Báo cáo hoạt động ngày hôm nay - Nhóm {group_name}'
+            )
         logging.info("Report sent successfully")
     except Exception as e:
         logging.error(f"Error sending report: {e}")
+        logging.error(f"Error type: {type(e)}")
+        logging.error(f"Error details: {str(e)}")
         await update.message.reply_text('❌ Có lỗi xảy ra khi gửi báo cáo. Vui lòng thử lại sau.')
 
 async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
@@ -827,10 +833,11 @@ async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
                     continue
                     
                 filename = f'activities_group_{group_id}_{current_date}.xlsx'
-                logging.info(f"Checking for report file: {filename}")
+                full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
+                logging.info(f"Checking for report file: {full_path}")
                 
-                if not os.path.exists(filename):
-                    logging.warning(f"Report file not found: {filename}")
+                if not os.path.exists(full_path):
+                    logging.warning(f"Report file not found: {full_path}")
                     continue
                     
                 group_name = settings['group_name']
@@ -841,49 +848,63 @@ async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
                 if report_group_id:
                     try:
                         logging.info(f"Sending report to report group {report_group_id}")
-                        await context.bot.send_message(
-                            chat_id=report_group_id,
-                            text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                                 f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
-                        )
-                        await context.bot.send_document(
-                            chat_id=report_group_id,
-                            document=filename,
-                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
-                        )
+                        # Mở file trong chế độ binary
+                        with open(full_path, 'rb') as f:
+                            await context.bot.send_message(
+                                chat_id=report_group_id,
+                                text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
+                                     f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
+                            )
+                            await context.bot.send_document(
+                                chat_id=report_group_id,
+                                document=f,
+                                filename=filename,
+                                caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
+                            )
                         logging.info(f"Successfully sent report to report group {report_group_id}")
                     except Exception as e:
                         logging.error(f"Error sending report to report group {report_group_id}: {e}")
+                        logging.error(f"Error type: {type(e)}")
+                        logging.error(f"Error details: {str(e)}")
                 
                 # Gửi báo cáo riêng cho từng admin
                 for admin_id in admin_ids:
                     try:
                         logging.info(f"Sending report to admin {admin_id}")
-                        # Gửi thông báo trước
-                        await context.bot.send_message(
-                            chat_id=admin_id,
-                            text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                                 f'Vui lòng đợi trong giây lát...'
-                        )
-                        
-                        # Gửi file Excel
-                        await context.bot.send_document(
-                            chat_id=admin_id,
-                            document=filename,
-                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                                   f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
-                        )
+                        # Mở file trong chế độ binary
+                        with open(full_path, 'rb') as f:
+                            # Gửi thông báo trước
+                            await context.bot.send_message(
+                                chat_id=admin_id,
+                                text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
+                                     f'Vui lòng đợi trong giây lát...'
+                            )
+                            
+                            # Gửi file Excel
+                            await context.bot.send_document(
+                                chat_id=admin_id,
+                                document=f,
+                                filename=filename,
+                                caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
+                                       f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
+                            )
                         logging.info(f"Successfully sent report to admin {admin_id}")
                     except Exception as e:
                         logging.error(f"Error sending report to admin {admin_id}: {e}")
+                        logging.error(f"Error type: {type(e)}")
+                        logging.error(f"Error details: {str(e)}")
                         continue
                         
             except Exception as e:
                 logging.error(f"Error processing group {group_id}: {e}")
+                logging.error(f"Error type: {type(e)}")
+                logging.error(f"Error details: {str(e)}")
                 continue
                 
     except Exception as e:
         logging.error(f"Error in send_daily_reports: {e}")
+        logging.error(f"Error type: {type(e)}")
+        logging.error(f"Error details: {str(e)}")
 
 async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
     """Job to send daily reports."""
