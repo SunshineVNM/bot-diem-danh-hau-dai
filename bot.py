@@ -909,9 +909,75 @@ async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
 async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
     """Job to send daily reports."""
     try:
-        logging.info("Starting daily report job")
-        await send_daily_reports(context)
-        logging.info("Daily report job completed")
+        current_date = datetime.now().strftime("%Y%m%d")
+        logging.info(f"Starting daily report generation for date: {current_date}")
+        
+        for group_id, settings in group_settings.items():
+            try:
+                if not settings['is_setup']:
+                    logging.info(f"Group {group_id} is not setup, skipping")
+                    continue
+                    
+                group_name = settings['group_name']
+                filename = f'activities_group_{group_id}_{current_date}.xlsx'
+                full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
+                
+                # Tạo DataFrame từ dữ liệu hoạt động
+                activities = []
+                for user_id, user_data in user_states.items():
+                    if user_data['group_id'] == group_id:
+                        for activity in user_data['activities']:
+                            if activity['date'] == current_date:
+                                activities.append({
+                                    'user_id': user_id,
+                                    'username': activity['username'],
+                                    'full_name': activity['full_name'],
+                                    'start_time': activity['start_time'],
+                                    'end_time': activity['end_time'],
+                                    'duration': activity['duration'],
+                                    'status': activity['status']
+                                })
+                
+                if not activities:
+                    logging.info(f"No activities found for group {group_name}")
+                    continue
+                
+                # Tạo DataFrame
+                df = pd.DataFrame(activities)
+                
+                # Tính toán tổng thời gian và số lần hoạt động cho mỗi user
+                user_stats = df.groupby(['user_id', 'username', 'full_name']).agg({
+                    'duration': 'sum',  # Tổng thời gian
+                    'start_time': 'count'  # Số lần hoạt động
+                }).reset_index()
+                
+                user_stats.columns = ['user_id', 'username', 'full_name', 'total_duration', 'activity_count']
+                
+                # Sắp xếp theo tổng thời gian giảm dần
+                user_stats = user_stats.sort_values('total_duration', ascending=False)
+                
+                # Tạo file Excel
+                with pd.ExcelWriter(full_path, engine='openpyxl') as writer:
+                    # Sheet chi tiết hoạt động
+                    df.to_excel(writer, sheet_name='Chi tiết hoạt động', index=False)
+                    
+                    # Sheet thống kê theo user
+                    user_stats.to_excel(writer, sheet_name='Thống kê theo user', index=False)
+                    
+                    # Định dạng cột thời gian
+                    for sheet in writer.sheets.values():
+                        for col in ['start_time', 'end_time']:
+                            if col in sheet.columns:
+                                for cell in sheet[col]:
+                                    if cell.value:
+                                        cell.number_format = 'hh:mm:ss'
+                
+                logging.info(f"Generated report for group {group_name}")
+                
+            except Exception as e:
+                logging.error(f"Error generating report for group {group_id}: {e}")
+                continue
+                
     except Exception as e:
         logging.error(f"Error in send_daily_reports_job: {e}")
 
