@@ -564,18 +564,7 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
             end_time = get_current_time()
             duration = (end_time - start_time).total_seconds() / 60
             current_action = user_states[user_id]['action']
-            
-            # Ghi log hoạt động
             group_id = update.effective_chat.id
-            success = record_activity(
-                group_id, user_id, update.effective_user.full_name,
-                current_action, start_time, end_time, duration
-            )
-            
-            # Tính toán tổng thời gian và số lần hoạt động trong ngày
-            current_date = datetime.now().strftime("%Y%m%d")
-            total_duration = 0
-            activity_count = 0
             
             # Khởi tạo user_states nếu chưa tồn tại
             if user_id not in user_states:
@@ -588,24 +577,47 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 user_states[user_id]['activities'] = []
             
             # Lưu hoạt động hiện tại
-            user_states[user_id]['activities'].append({
-                'date': current_date,
+            current_activity = {
+                'date': datetime.now().strftime("%Y%m%d"),
                 'username': update.effective_user.full_name,
                 'full_name': update.effective_user.full_name,
                 'start_time': start_time,
                 'end_time': end_time,
                 'duration': duration,
                 'status': 'completed'
-            })
+            }
+            user_states[user_id]['activities'].append(current_activity)
+            
+            # Lưu user_states vào file
+            save_user_states()
+            
+            # Ghi log hoạt động vào Excel
+            success = record_activity(
+                group_id, user_id, update.effective_user.full_name,
+                current_action, start_time, end_time, duration
+            )
+            
+            # Tính toán tổng thời gian và số lần hoạt động trong ngày
+            current_date = datetime.now().strftime("%Y%m%d")
+            total_duration = 0
+            activity_count = 0
+            
+            # Debug log
+            logging.info(f"=== Thống kê hoạt động ===")
+            logging.info(f"User ID: {user_id}")
+            logging.info(f"Current date: {current_date}")
+            logging.info(f"Activities count: {len(user_states[user_id]['activities'])}")
             
             # Tính toán thống kê
             for activity in user_states[user_id]['activities']:
                 if activity['date'] == current_date:
                     total_duration += activity['duration']
                     activity_count += 1
+                    logging.info(f"Activity: {activity}")
             
-            # Lưu user_states vào file
-            save_user_states()
+            logging.info(f"Total duration: {total_duration}")
+            logging.info(f"Activity count: {activity_count}")
+            logging.info("=== Kết thúc thống kê ===")
             
             # Thông báo kết quả
             if duration > TIME_LIMITS[current_action]:
