@@ -120,8 +120,41 @@ def load_group_settings():
     except FileNotFoundError:
         return {}
 
+def save_user_states():
+    """Save user states to JSON file."""
+    try:
+        with open('user_states.json', 'w', encoding='utf-8') as f:
+            # Convert datetime objects to strings
+            states_to_save = {}
+            for user_id, state in user_states.items():
+                states_to_save[str(user_id)] = state
+                if 'start_time' in state:
+                    state['start_time'] = state['start_time'].isoformat()
+            json.dump(states_to_save, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logging.error(f"Error saving user states: {e}")
+
+def load_user_states():
+    """Load user states from JSON file."""
+    try:
+        with open('user_states.json', 'r', encoding='utf-8') as f:
+            states = json.load(f)
+            # Convert string keys back to integers and parse datetime
+            loaded_states = {}
+            for k, v in states.items():
+                if 'start_time' in v:
+                    v['start_time'] = datetime.fromisoformat(v['start_time'])
+                loaded_states[int(k)] = v
+            return loaded_states
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        logging.error(f"Error loading user states: {e}")
+        return {}
+
 # Load settings when bot starts
 group_settings = load_group_settings()
+user_states = load_user_states()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
@@ -539,6 +572,17 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 current_action, start_time, end_time, duration
             )
             
+            # Tính toán tổng thời gian và số lần hoạt động trong ngày
+            current_date = datetime.now().strftime("%Y%m%d")
+            total_duration = 0
+            activity_count = 0
+            
+            if user_id in user_states and 'activities' in user_states[user_id]:
+                for activity in user_states[user_id]['activities']:
+                    if activity['date'] == current_date:
+                        total_duration += activity['duration']
+                        activity_count += 1
+            
             # Thông báo kết quả
             if duration > TIME_LIMITS[current_action]:
                 await update.message.reply_text(
@@ -546,7 +590,10 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     f'Hành động: {current_action}\n'
                     f'Thời gian cho phép: {TIME_LIMITS[current_action]} phút\n'
                     f'Thời gian thực tế: {duration:.1f} phút\n'
-                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}',
+                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}\n\n'
+                    f'📊 Thống kê ngày hôm nay:\n'
+                    f'• Tổng thời gian hoạt động: {total_duration:.1f} phút\n'
+                    f'• Số lần hoạt động: {activity_count}',
                     reply_markup=activity_keyboard
                 )
             else:
@@ -554,7 +601,10 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     f'✅🎉 Hoàn thành!\n'
                     f'Hành động: {current_action}\n'
                     f'Thời gian: {duration:.1f} phút\n'
-                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}',
+                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}\n\n'
+                    f'📊 Thống kê ngày hôm nay:\n'
+                    f'• Tổng thời gian hoạt động: {total_duration:.1f} phút\n'
+                    f'• Số lần hoạt động: {activity_count}',
                     reply_markup=activity_keyboard
                 )
             
@@ -680,6 +730,26 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
             start_time = start_time.replace(tzinfo=None)
         if end_time.tzinfo is not None:
             end_time = end_time.replace(tzinfo=None)
+        
+        # Lưu hoạt động vào user_states
+        if user_id not in user_states:
+            user_states[user_id] = {
+                'group_id': group_id,
+                'activities': []
+            }
+        
+        user_states[user_id]['activities'].append({
+            'date': datetime.now().strftime("%Y%m%d"),
+            'username': user_name,
+            'full_name': user_name,
+            'start_time': start_time,
+            'end_time': end_time,
+            'duration': duration,
+            'status': 'completed'
+        })
+        
+        # Lưu user_states vào file
+        save_user_states()
         
         data = {
             'ID': user_id,
@@ -911,16 +981,34 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         current_date = datetime.now().strftime("%Y%m%d")
         logging.info(f"Starting daily report generation for date: {current_date}")
+        logging.info(f"Current timezone: {datetime.now().astimezone().tzinfo}")
+        logging.info(f"Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Kiểm tra thư mục reports
+        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        if not os.path.exists(reports_dir):
+            logging.info(f"Creating reports directory: {reports_dir}")
+            os.makedirs(reports_dir)
         
         for group_id, settings in group_settings.items():
             try:
+                logging.info(f"Processing group {group_id}: {settings}")
                 if not settings['is_setup']:
                     logging.info(f"Group {group_id} is not setup, skipping")
                     continue
                     
                 group_name = settings['group_name']
+                report_group_id = settings.get('report_group_id')
+                
+                if not report_group_id:
+                    logging.warning(f"No report group configured for {group_name}")
+                    continue
+                    
+                logging.info(f"Generating report for group {group_name} (ID: {group_id})")
+                logging.info(f"Report will be sent to group {report_group_id}")
+                
                 filename = f'activities_group_{group_id}_{current_date}.xlsx'
-                full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
+                full_path = os.path.join(reports_dir, filename)
                 
                 # Tạo DataFrame từ dữ liệu hoạt động
                 activities = []
@@ -941,6 +1029,8 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                 if not activities:
                     logging.info(f"No activities found for group {group_name}")
                     continue
+                
+                logging.info(f"Found {len(activities)} activities for group {group_name}")
                 
                 # Tạo DataFrame
                 df = pd.DataFrame(activities)
@@ -972,7 +1062,20 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                                     if cell.value:
                                         cell.number_format = 'hh:mm:ss'
                 
-                logging.info(f"Generated report for group {group_name}")
+                logging.info(f"Generated report file: {full_path}")
+                
+                # Gửi báo cáo đến nhóm được chỉ định
+                try:
+                    with open(full_path, 'rb') as f:
+                        await context.bot.send_document(
+                            chat_id=report_group_id,
+                            document=f,
+                            filename=filename,
+                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
+                        )
+                    logging.info(f"Report sent successfully to group {report_group_id}")
+                except Exception as e:
+                    logging.error(f"Error sending report to group {report_group_id}: {e}")
                 
             except Exception as e:
                 logging.error(f"Error generating report for group {group_id}: {e}")
@@ -980,6 +1083,8 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                 
     except Exception as e:
         logging.error(f"Error in send_daily_reports_job: {e}")
+        logging.error(f"Error type: {type(e)}")
+        logging.error(f"Error details: {str(e)}")
 
 async def safe_send_message(bot, chat_id, text, reply_to_message_id=None):
     while True:
