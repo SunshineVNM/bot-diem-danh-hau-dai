@@ -27,7 +27,7 @@ TIME_LIMITS = {
     '🚻 Vệ Sinh 1': 10,
     '🚻 Vệ Sinh 2': 15,
     '🍚 Lấy Cơm': 10,
-    '🍽️ Cất Bát': 5
+    '🍽️ Cất Bát': 5,
 }
 
 # Store user states
@@ -136,7 +136,15 @@ def save_user_states():
                             activity['start_time'] = activity['start_time'].isoformat()
                         if 'end_time' in activity and isinstance(activity['end_time'], datetime):
                             activity['end_time'] = activity['end_time'].isoformat()
+                        # Ensure duration is a number
+                        if 'duration' in activity:
+                            if isinstance(activity['duration'], str):
+                                try:
+                                    activity['duration'] = float(activity['duration'])
+                                except ValueError:
+                                    activity['duration'] = 0.0
             json.dump(states_to_save, f, ensure_ascii=False, indent=4)
+            logging.info(f"Saved user states: {states_to_save}")
     except Exception as e:
         logging.error(f"Error saving user states: {e}")
         logging.error(f"User states content: {user_states}")
@@ -149,17 +157,41 @@ def load_user_states():
             # Convert string keys back to integers and parse datetime
             loaded_states = {}
             for k, v in states.items():
-                loaded_states[int(k)] = v.copy()  # Create a copy to avoid modifying original
+                # Đảm bảo cấu trúc dữ liệu đầy đủ
+                loaded_states[int(k)] = {
+                    'start_time': None,
+                    'activities': [],
+                    'action': None,
+                    'status': 'inactive'
+                }
+                
+                # Cập nhật các giá trị từ file
                 if 'start_time' in v and isinstance(v['start_time'], str):
                     loaded_states[int(k)]['start_time'] = datetime.fromisoformat(v['start_time'])
                 if 'activities' in v:
+                    loaded_states[int(k)]['activities'] = v['activities']
+                    # Chuyển đổi datetime trong activities
                     for activity in loaded_states[int(k)]['activities']:
                         if 'start_time' in activity and isinstance(activity['start_time'], str):
                             activity['start_time'] = datetime.fromisoformat(activity['start_time'])
                         if 'end_time' in activity and isinstance(activity['end_time'], str):
                             activity['end_time'] = datetime.fromisoformat(activity['end_time'])
+                        # Đảm bảo duration là số
+                        if 'duration' in activity:
+                            if isinstance(activity['duration'], str):
+                                try:
+                                    activity['duration'] = float(activity['duration'])
+                                except ValueError:
+                                    activity['duration'] = 0.0
+                if 'action' in v:
+                    loaded_states[int(k)]['action'] = v['action']
+                if 'status' in v:
+                    loaded_states[int(k)]['status'] = v['status']
+                    
+            logging.info(f"Loaded user states: {loaded_states}")
             return loaded_states
     except FileNotFoundError:
+        logging.info("No user_states.json file found, starting with empty states")
         return {}
     except Exception as e:
         logging.error(f"Error loading user states: {e}")
@@ -406,317 +438,374 @@ async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def update_countdown(user_id, chat_id, message_id, action, time_limit, context):
     """Update countdown timer."""
-    if user_id not in user_states:
-        return
-    
-    start_time = user_states[user_id]['start_time']
-    end_time = start_time + timedelta(minutes=time_limit)
-    now = get_current_time()
-    
-    # Tính thời gian còn lại
-    remaining = (end_time - now).total_seconds()
-    
-    # Chờ đến khi còn 1 phút
-    if remaining > 60:
-        await asyncio.sleep(remaining - 60)
-        # Kiểm tra lại trạng thái
-        if user_id not in user_states or user_states[user_id]['status'] != 'active':
+    try:
+        logging.info(f"Starting countdown for user {user_id}, action {action}, time limit {time_limit}")
+        
+        if user_id not in user_states:
+            logging.warning(f"User {user_id} not found in user_states")
             return
-        await safe_send_message(
-            context.bot, 
-            chat_id, 
-            text=f"⚠️⏳ CẢNH BÁO: Hoạt động {action} còn 1 phút nữa sẽ hết thời gian cho phép!", 
-            reply_to_message_id=message_id
-        )
-        remaining = 60
-    
-    # Chờ đến khi còn 20 giây
-    if remaining > 20:
-        await asyncio.sleep(remaining - 20)
-        # Kiểm tra lại trạng thái
-        if user_id not in user_states or user_states[user_id]['status'] != 'active':
-            return
-        await safe_send_message(
-            context.bot, 
-            chat_id, 
-            text=f'🚨 CẢNH BÁO KHẨN CẤP: Hoạt động {action} chỉ còn 20 giây nữa!\nẤn quay về ngay lập tức!', 
-            reply_to_message_id=message_id
-        )
-        remaining = 20
-    
-    # Chờ đến hết giờ
-    await asyncio.sleep(remaining)
-    # Kiểm tra lại trạng thái
-    if user_id in user_states and user_states[user_id]['status'] == 'active':
-        try:
-            end_time = get_current_time()
-            duration = (end_time - start_time).total_seconds()
-            minutes = int(duration // 60)
-            seconds = int(duration % 60)
-            record_activity(
-                chat_id, user_id, user_states[user_id].get('user_name', 'Unknown'),
-                action, start_time, end_time, duration / 60
-            )
+        
+        start_time = user_states[user_id]['start_time']
+        end_time = start_time + timedelta(minutes=time_limit)
+        now = datetime.now()
+        
+        # Tính thời gian còn lại
+        remaining = (end_time - now).total_seconds()
+        logging.info(f"Time remaining: {remaining} seconds")
+        
+        # Chờ đến khi còn 1 phút
+        if remaining > 60:
+            wait_time = remaining - 60
+            logging.info(f"Waiting {wait_time} seconds until 1 minute warning")
+            await asyncio.sleep(wait_time)
+            
+            # Kiểm tra lại trạng thái
+            if user_id not in user_states or user_states[user_id]['status'] != 'active':
+                logging.info(f"User {user_id} is no longer active, stopping countdown")
+                return
+                
+            logging.info(f"Sending 1 minute warning for user {user_id}")
             await safe_send_message(
                 context.bot, 
                 chat_id, 
-                text=f'⛔ VI PHẠM THỜI GIAN!\nHành động: {action}\nThời gian cho phép: {time_limit} phút\nThời gian thực tế: {minutes:02d}:{seconds:02d}\nĐã ghi nhận vi phạm vào báo cáo.', 
+                text=f"⚠️⏳ CẢNH BÁO: Hoạt động {action} còn 1 phút nữa sẽ hết thời gian cho phép!", 
                 reply_to_message_id=message_id
             )
-            del user_states[user_id]
-            if user_id in countdown_tasks:
-                del countdown_tasks[user_id]
-        except Exception as e:
-            logging.error(f"Error handling time violation: {e}")
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button presses."""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    action = query.data
-    current_time = datetime.now()
-    
-    if user_id in user_states and user_states[user_id]['status'] == 'active':
-        # User is returning
-        if action != user_states[user_id]['action']:
-            await query.edit_message_text(
-                f'❌ Vui lòng chọn đúng hành động {user_states[user_id]["action"]} để kết thúc.'
+            remaining = 60
+        
+        # Chờ đến khi còn 20 giây
+        if remaining > 20:
+            wait_time = remaining - 20
+            logging.info(f"Waiting {wait_time} seconds until 20 seconds warning")
+            await asyncio.sleep(wait_time)
+            
+            # Kiểm tra lại trạng thái
+            if user_id not in user_states or user_states[user_id]['status'] != 'active':
+                logging.info(f"User {user_id} is no longer active, stopping countdown")
+                return
+                
+            logging.info(f"Sending 20 seconds warning for user {user_id}")
+            await safe_send_message(
+                context.bot, 
+                chat_id, 
+                text=f'🚨 CẢNH BÁO KHẨN CẤP: Hoạt động {action} chỉ còn 20 giây nữa!\nẤn quay về ngay lập tức!', 
+                reply_to_message_id=message_id
             )
-            return
-
-        # Hủy task đếm ngược nếu có
-        if user_id in countdown_tasks:
-            countdown_tasks[user_id].cancel()
-            del countdown_tasks[user_id]
-
-        start_time = user_states[user_id]['start_time']
-        time_diff = current_time - start_time
-        duration = time_diff.total_seconds() / 60
+            remaining = 20
         
-        if duration > TIME_LIMITS[user_states[user_id]['action']]:
-            # Violation occurred
-            minutes = int(duration)
-            seconds = int((duration - minutes) * 60)
-            await query.edit_message_text(
-                f'⚠️ Vi phạm thời gian!\n'
-                f'Hành động: {user_states[user_id]["action"]}\n'
-                f'Thời gian cho phép: {TIME_LIMITS[user_states[user_id]["action"]]} phút\n'
-                f'Thời gian thực tế: {minutes:02d}:{seconds:02d}'
+        # Chờ đến hết giờ
+        logging.info(f"Waiting final {remaining} seconds")
+        await asyncio.sleep(remaining)
+        
+        # Kiểm tra lại trạng thái
+        if user_id in user_states and user_states[user_id]['status'] == 'active':
+            logging.info(f"Sending time up warning for user {user_id}")
+            await safe_send_message(
+                context.bot, 
+                chat_id, 
+                text=f'⏰ ĐÃ HẾT THỜI GIAN CHO PHÉP!\nHoạt động: {action}\nThời gian cho phép: {time_limit} phút\nVui lòng ấn nút "Quay về" để kết thúc hoạt động.', 
+                reply_to_message_id=message_id
             )
-        else:
-            minutes = int(duration)
-            seconds = int((duration - minutes) * 60)
-            await query.edit_message_text(
-                f'✅🎉 Hoàn thành!\n'
-                f'Hành động: {user_states[user_id]["action"]}\n'
-                f'Thời gian: {minutes:02d}:{seconds:02d}'
-            )
-        
-        # Record the activity
-        group_id = query.message.chat_id
-        record_activity(group_id, user_id, query.from_user.full_name, user_states[user_id]['action'], 
-                       start_time, current_time, duration)
-        
-        # Clear user state
-        del user_states[user_id]
-    else:
-        # User is starting new activity
-        user_states[user_id] = {
-            'action': action,
-            'start_time': current_time,
-            'status': 'active',
-            'user_name': query.from_user.full_name  # Lưu tên người dùng
-        }
-        
-        # Tạo bàn phím reply chỉ với nút Quay về
-        reply_keyboard = [["🔙 Quay về"]]
-        reply_markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-        
-        message = await query.edit_message_text(
-            f'⏱️ Bạn đã bắt đầu: {action}\n'
-            f'Thời gian cho phép: {TIME_LIMITS[action]} phút\n'
-            f'Còn lại: {TIME_LIMITS[action]:02d}:00'
-        )
-        
-        # Gửi bàn phím reply
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text="Nhấn 'Quay về' khi bạn đã quay lại.",
-            reply_markup=reply_markup
-        )
-        
-        # Bắt đầu task đếm ngược
-        countdown_tasks[user_id] = asyncio.create_task(
-            update_countdown(
-                user_id=user_id,
-                chat_id=message.chat_id,
-                message_id=message.message_id,
-                action=action,
-                time_limit=TIME_LIMITS[action],
-                context=context
-            )
-        )
+            
+    except Exception as e:
+        logging.error(f"Error in update_countdown: {e}")
+        logging.error(f"User ID: {user_id}")
+        logging.error(f"Action: {action}")
+        logging.error(f"Time limit: {time_limit}")
+        logging.error(f"Stack trace:", exc_info=True)
 
 async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle activity button presses from ReplyKeyboardMarkup."""
+    """Handle activity button press."""
     user_id = update.effective_user.id
-    action = update.message.text
     
-    # Xử lý nút Quay về
-    if action == "🔙 Quay về":
-        if user_id in user_states and user_states[user_id]['status'] == 'active':
-            # Hủy task đếm ngược nếu có
-            if user_id in countdown_tasks:
-                countdown_tasks[user_id].cancel()
-                del countdown_tasks[user_id]
-            
-            # Xử lý kết thúc hoạt động
-            start_time = user_states[user_id]['start_time']
-            end_time = get_current_time()
-            duration = (end_time - start_time).total_seconds() / 60
-            current_action = user_states[user_id]['action']
-            group_id = update.effective_chat.id
-            
-            # Khởi tạo user_states nếu chưa tồn tại
-            if user_id not in user_states:
-                user_states[user_id] = {
-                    'group_id': group_id,
-                    'activities': [],
-                    'status': 'inactive'
+    # Khởi tạo trạng thái cho user nếu chưa có
+    if user_id not in user_states:
+        user_states[user_id] = {
+            'start_time': None,
+            'activities': [],
+            'action': None,
+            'status': 'inactive'
+        }
+    
+    # Xử lý nút từ ReplyKeyboardMarkup
+    if update.message and update.message.text:
+        current_action = update.message.text
+        # Xử lý nút Quay về
+        if current_action == "🔙 Quay về":
+            if user_states[user_id]['start_time'] is not None:
+                # Hủy task đếm ngược nếu có
+                if user_id in countdown_tasks:
+                    countdown_tasks[user_id].cancel()
+                    del countdown_tasks[user_id]
+
+                start_time = user_states[user_id]['start_time']
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds() / 60
+                
+                # Tạo bản ghi hoạt động mới
+                current_activity = {
+                    'date': end_time.strftime("%Y%m%d"),
+                    'username': update.effective_user.full_name,
+                    'full_name': update.effective_user.full_name,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': duration,
+                    'status': 'completed',
+                    'action': user_states[user_id].get('action', 'Unknown')
                 }
-            elif 'activities' not in user_states[user_id]:
-                user_states[user_id]['activities'] = []
-            
-            # Lưu hoạt động hiện tại
-            current_activity = {
-                'date': datetime.now().strftime("%Y%m%d"),
-                'username': update.effective_user.full_name,
-                'full_name': update.effective_user.full_name,
-                'start_time': start_time,
-                'end_time': end_time,
-                'duration': duration,
-                'status': 'completed'
-            }
-            user_states[user_id]['activities'].append(current_activity)
-            
-            # Lưu user_states vào file
-            save_user_states()
-            
-            # Ghi log hoạt động vào Excel
-            success = record_activity(
-                group_id, user_id, update.effective_user.full_name,
-                current_action, start_time, end_time, duration
-            )
-            
-            # Tính toán tổng thời gian và số lần hoạt động trong ngày
-            current_date = datetime.now().strftime("%Y%m%d")
-            total_duration = 0
-            activity_count = 0
-            
-            # Debug log
-            logging.info(f"=== Thống kê hoạt động ===")
-            logging.info(f"User ID: {user_id}")
-            logging.info(f"Current date: {current_date}")
-            logging.info(f"Activities count: {len(user_states[user_id]['activities'])}")
-            
-            # Tính toán thống kê
-            for activity in user_states[user_id]['activities']:
-                if activity['date'] == current_date:
-                    total_duration += activity['duration']
+                
+                # Thêm hoạt động mới vào danh sách
+                user_states[user_id]['activities'].append(current_activity)
+                
+                # Tính toán thống kê
+                current_date = end_time.strftime("%Y%m%d")
+                total_duration = 0
+                activity_count = 0
+                
+                # Lọc và tính toán thống kê cho ngày hiện tại dựa vào start_time
+                today_activities = []
+                for activity in user_states[user_id]['activities']:
+                    # Chuyển đổi start_time từ string sang datetime nếu cần
+                    activity_start_time = activity['start_time']
+                    if isinstance(activity_start_time, str):
+                        try:
+                            activity_start_time = datetime.fromisoformat(activity_start_time)
+                        except ValueError:
+                            continue
+                    
+                    # So sánh ngày
+                    if activity_start_time.strftime("%Y%m%d") == current_date:
+                        today_activities.append(activity)
+                
+                # Tính tổng thời gian và số lần hoạt động
+                for activity in today_activities:
+                    activity_duration = activity['duration']
+                    if isinstance(activity_duration, str):
+                        try:
+                            activity_duration = float(activity_duration)
+                        except ValueError:
+                            continue
+                    total_duration += activity_duration
                     activity_count += 1
-                    logging.info(f"Activity: {activity}")
-            
-            logging.info(f"Total duration: {total_duration}")
-            logging.info(f"Activity count: {activity_count}")
-            logging.info("=== Kết thúc thống kê ===")
-            
-            # Thông báo kết quả
-            if duration > TIME_LIMITS[current_action]:
-                await update.message.reply_text(
-                    f'⚠️ Vi phạm thời gian!\n'
-                    f'Hành động: {current_action}\n'
-                    f'Thời gian cho phép: {TIME_LIMITS[current_action]} phút\n'
-                    f'Thời gian thực tế: {duration:.1f} phút\n'
-                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}\n\n'
-                    f'📊 Thống kê ngày hôm nay:\n'
-                    f'• Tổng thời gian hoạt động: {total_duration:.1f} phút\n'
-                    f'• Số lần hoạt động: {activity_count}',
-                    reply_markup=activity_keyboard
+                
+                # Ghi hoạt động vào Excel
+                success = record_activity(
+                    update.effective_chat.id,
+                    user_id,
+                    update.effective_user.full_name,
+                    current_activity['action'],
+                    start_time,
+                    end_time,
+                    duration
                 )
+                
+                # Reset thời gian bắt đầu
+                user_states[user_id]['start_time'] = None
+                user_states[user_id]['action'] = None
+                user_states[user_id]['status'] = 'inactive'
+                
+                # Tạo thông báo kết quả
+                duration_minutes = int(duration)
+                duration_seconds = int((duration - duration_minutes) * 60)
+                duration_str = f"{duration_minutes:02d}:{duration_seconds:02d}"
+                
+                # Kiểm tra vi phạm
+                is_violation = duration > TIME_LIMITS.get(current_activity['action'], float('inf'))
+                status_icon = "❌" if is_violation else "✅"
+                status_text = "VI PHẠM" if is_violation else "HỢP LỆ"
+                
+                result_message = (
+                    f"📊 KẾT QUẢ HOẠT ĐỘNG\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎯 Hoạt động: {current_activity['action']}\n"
+                    f"⏱️ Thời gian bắt đầu: {start_time.strftime('%H:%M:%S')}\n"
+                    f"⏱️ Thời gian kết thúc: {end_time.strftime('%H:%M:%S')}\n"
+                    f"⏱️ Thời gian hoạt động: {duration_str}\n"
+                    f"📅 Ngày: {start_time.strftime('%d/%m/%Y')}\n"
+                    f"📈 Tổng thời gian hôm nay: {total_duration:.2f} phút\n"
+                    f"🔢 Số lần hoạt động: {activity_count}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{status_icon} Trạng thái: {status_text}\n"
+                )
+                
+                if is_violation:
+                    result_message += f"⚠️ Vượt quá thời gian cho phép ({TIME_LIMITS[current_activity['action']]} phút)"
+                
+                await update.message.reply_text(result_message, reply_markup=activity_keyboard)
+                save_user_states()
             else:
                 await update.message.reply_text(
-                    f'✅🎉 Hoàn thành!\n'
-                    f'Hành động: {current_action}\n'
-                    f'Thời gian: {duration:.1f} phút\n'
-                    f'{"✅ Đã ghi nhận vào báo cáo" if success else "❌ Lỗi khi ghi báo cáo"}\n\n'
-                    f'📊 Thống kê ngày hôm nay:\n'
-                    f'• Tổng thời gian hoạt động: {total_duration:.1f} phút\n'
-                    f'• Số lần hoạt động: {activity_count}',
+                    '❌ Bạn không có hoạt động nào đang diễn ra.',
                     reply_markup=activity_keyboard
                 )
+            return
             
-            # Xóa trạng thái active của user nhưng giữ lại lịch sử hoạt động
-            user_states[user_id]['status'] = 'inactive'
-            if 'start_time' in user_states[user_id]:
-                del user_states[user_id]['start_time']
-            if 'action' in user_states[user_id]:
-                del user_states[user_id]['action']
+        # Xử lý các nút hoạt động khác
+        if current_action in TIME_LIMITS:
+            # Nếu đang có hoạt động khác
+            if user_states[user_id]['start_time'] is not None:
+                await update.message.reply_text(
+                    f'⚠️ Bạn đang trong hoạt động khác.\n'
+                    'Vui lòng nhấn "🔙 Quay về" trước khi bắt đầu hoạt động mới.',
+                    reply_markup=activity_keyboard
+                )
+                return
             
-            # Lưu lại trạng thái mới
-            save_user_states()
-        else:
-            await update.message.reply_text(
-                '❌ Bạn không có hoạt động nào đang diễn ra.',
+            # Bắt đầu hoạt động mới
+            current_time = datetime.now()
+            user_states[user_id]['start_time'] = current_time
+            user_states[user_id]['action'] = current_action
+            user_states[user_id]['status'] = 'active'
+            
+            message = await update.message.reply_text(
+                f"Bạn đã bắt đầu hoạt động {current_action}.\n"
+                f"Thời gian bắt đầu: {current_time.strftime('%H:%M:%S')}\n"
+                f"Thời gian cho phép: {TIME_LIMITS[current_action]} phút",
                 reply_markup=activity_keyboard
             )
-        return
-
-    # Kiểm tra nếu user đang trong trạng thái active
-    if user_id in user_states and user_states[user_id]['status'] == 'active':
-        await update.message.reply_text(
-            f'⚠️ Bạn đang trong trạng thái {user_states[user_id]["action"]}.\n'
-            'Vui lòng nhấn "🔙 Quay về" trước khi chọn hoạt động mới.',
-            reply_markup=activity_keyboard
-        )
-        return
-
-    # Kiểm tra nếu action là một trong các hoạt động được định nghĩa
-    if action in TIME_LIMITS:
-        current_time = get_current_time()
-        user_states[user_id] = {
-            'action': action,
-            'start_time': current_time,
-            'status': 'active',
-            'user_name': update.effective_user.full_name,
-            'message_id': update.message.message_id  # Lưu message_id của tin nhắn bắt đầu
+            
+            # Bắt đầu task đếm ngược
+            countdown_tasks[user_id] = asyncio.create_task(
+                update_countdown(
+                    user_id=user_id,
+                    chat_id=message.chat_id,
+                    message_id=message.message_id,
+                    action=current_action,
+                    time_limit=TIME_LIMITS[current_action],
+                    context=context
+                )
+            )
+            save_user_states()
+    
+    # Xử lý nút từ InlineKeyboardMarkup
+    elif update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        current_action = query.data
+        
+        # Lấy thời gian hiện tại
+        current_time = datetime.now()
+        
+        # Nếu chưa có thời gian bắt đầu, lưu thời gian bắt đầu
+        if user_states[user_id]['start_time'] is None:
+            user_states[user_id]['start_time'] = current_time
+            user_states[user_id]['action'] = current_action
+            user_states[user_id]['status'] = 'active'
+            
+            # Tạo bàn phím reply chỉ với nút Quay về
+            reply_keyboard = [["🔙 Quay về"]]
+            reply_markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+            
+            message = await query.edit_message_text(
+                f"Bạn đã bắt đầu hoạt động {current_action}.\n"
+                f"Thời gian bắt đầu: {current_time.strftime('%H:%M:%S')}\n"
+                f"Thời gian cho phép: {TIME_LIMITS[current_action]} phút"
+            )
+            
+            # Gửi bàn phím reply
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Nhấn 'Quay về' khi bạn đã quay lại.",
+                reply_markup=reply_markup
+            )
+            
+            # Bắt đầu task đếm ngược
+            if user_id in countdown_tasks:
+                countdown_tasks[user_id].cancel()
+            
+            countdown_tasks[user_id] = asyncio.create_task(
+                update_countdown(
+                    user_id=user_id,
+                    chat_id=message.chat_id,
+                    message_id=message.message_id,
+                    action=current_action,
+                    time_limit=TIME_LIMITS[current_action],
+                    context=context
+                )
+            )
+            save_user_states()
+            return
+        
+        # Tính thời gian hoạt động
+        start_time = user_states[user_id]['start_time']
+        end_time = current_time
+        duration = (end_time - start_time).total_seconds() / 60
+        
+        # Tạo bản ghi hoạt động mới
+        current_activity = {
+            'date': current_time.strftime("%Y%m%d"),
+            'username': update.effective_user.full_name,
+            'full_name': update.effective_user.full_name,
+            'start_time': start_time,
+            'end_time': end_time,
+            'duration': duration,
+            'status': 'completed',
+            'action': current_action
         }
         
-        message = await update.message.reply_text(
-            f'⏱️ Bạn đã bắt đầu: {action}\n'
-            f'Thời gian cho phép: {TIME_LIMITS[action]} phút\n'
-            f'Còn lại: {TIME_LIMITS[action]:02d}:00',
-            reply_markup=activity_keyboard
+        # Thêm hoạt động mới vào danh sách
+        user_states[user_id]['activities'].append(current_activity)
+        
+        # Tính toán thống kê
+        current_date = current_time.strftime("%Y%m%d")
+        total_duration = 0
+        activity_count = 0
+        
+        # Lọc và tính toán thống kê cho ngày hiện tại dựa vào start_time
+        today_activities = []
+        for activity in user_states[user_id]['activities']:
+            # Chuyển đổi start_time từ string sang datetime nếu cần
+            activity_start_time = activity['start_time']
+            if isinstance(activity_start_time, str):
+                try:
+                    activity_start_time = datetime.fromisoformat(activity_start_time)
+                except ValueError:
+                    continue
+            
+            # So sánh ngày
+            if activity_start_time.strftime("%Y%m%d") == current_date:
+                today_activities.append(activity)
+        
+        # Tính tổng thời gian và số lần hoạt động
+        for activity in today_activities:
+            activity_duration = activity['duration']
+            if isinstance(activity_duration, str):
+                try:
+                    activity_duration = float(activity_duration)
+                except ValueError:
+                    continue
+            total_duration += activity_duration
+            activity_count += 1
+        
+        # Tạo thông báo kết quả
+        duration_minutes = int(duration)
+        duration_seconds = int((duration - duration_minutes) * 60)
+        duration_str = f"{duration_minutes:02d}:{duration_seconds:02d}"
+        
+        # Kiểm tra vi phạm
+        is_violation = duration > TIME_LIMITS.get(current_action, float('inf'))
+        status_icon = "❌" if is_violation else "✅"
+        status_text = "VI PHẠM" if is_violation else "HỢP LỆ"
+        
+        result_message = (
+            f"📊 KẾT QUẢ HOẠT ĐỘNG\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 Hoạt động: {current_activity['action']}\n"
+            f"⏱️ Thời gian bắt đầu: {start_time.strftime('%H:%M:%S')}\n"
+            f"⏱️ Thời gian kết thúc: {end_time.strftime('%H:%M:%S')}\n"
+            f"⏱️ Thời gian hoạt động: {duration_str}\n"
+            f"📅 Ngày: {start_time.strftime('%d/%m/%Y')}\n"
+            f"📈 Tổng thời gian hôm nay: {total_duration:.2f} phút\n"
+            f"🔢 Số lần hoạt động: {activity_count}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{status_icon} Trạng thái: {status_text}\n"
         )
         
-        # Bắt đầu task đếm ngược
-        countdown_tasks[user_id] = asyncio.create_task(
-            update_countdown(
-                user_id=user_id,
-                chat_id=message.chat_id,
-                message_id=user_states[user_id]['message_id'],  # Sử dụng message_id của tin nhắn bắt đầu
-                action=action,
-                time_limit=TIME_LIMITS[action],
-                context=context
-            )
-        )
-    else:
-        # Nếu không phải là một hoạt động hợp lệ
-        await update.message.reply_text(
-            '❌ Vui lòng chọn một hoạt động từ bàn phím.',
-            reply_markup=activity_keyboard
-        )
+        if is_violation:
+            result_message += f"⚠️ Vượt quá thời gian cho phép ({TIME_LIMITS[current_activity['action']]} phút)"
+        
+        await query.edit_message_text(result_message)
+        save_user_states()
 
 async def handle_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle when user clicks the return button."""
@@ -786,26 +875,6 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
             start_time = start_time.replace(tzinfo=None)
         if end_time.tzinfo is not None:
             end_time = end_time.replace(tzinfo=None)
-        
-        # Lưu hoạt động vào user_states
-        if user_id not in user_states:
-            user_states[user_id] = {
-                'group_id': group_id,
-                'activities': []
-            }
-        
-        user_states[user_id]['activities'].append({
-            'date': datetime.now().strftime("%Y%m%d"),
-            'username': user_name,
-            'full_name': user_name,
-            'start_time': start_time,
-            'end_time': end_time,
-            'duration': duration,
-            'status': 'completed'
-        })
-        
-        # Lưu user_states vào file
-        save_user_states()
         
         data = {
             'ID': user_id,
