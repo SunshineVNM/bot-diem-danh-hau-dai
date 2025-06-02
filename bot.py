@@ -577,11 +577,31 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
             total_duration = 0
             activity_count = 0
             
-            if user_id in user_states and 'activities' in user_states[user_id]:
-                for activity in user_states[user_id]['activities']:
-                    if activity['date'] == current_date:
-                        total_duration += activity['duration']
-                        activity_count += 1
+            # Lưu hoạt động hiện tại vào user_states trước khi tính toán
+            if user_id not in user_states:
+                user_states[user_id] = {
+                    'group_id': group_id,
+                    'activities': []
+                }
+            
+            user_states[user_id]['activities'].append({
+                'date': current_date,
+                'username': update.effective_user.full_name,
+                'full_name': update.effective_user.full_name,
+                'start_time': start_time,
+                'end_time': end_time,
+                'duration': duration,
+                'status': 'completed'
+            })
+            
+            # Tính toán thống kê
+            for activity in user_states[user_id]['activities']:
+                if activity['date'] == current_date:
+                    total_duration += activity['duration']
+                    activity_count += 1
+            
+            # Lưu user_states vào file
+            save_user_states()
             
             # Thông báo kết quả
             if duration > TIME_LIMITS[current_action]:
@@ -608,8 +628,15 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     reply_markup=activity_keyboard
                 )
             
-            # Xóa trạng thái user
-            del user_states[user_id]
+            # Xóa trạng thái active của user nhưng giữ lại lịch sử hoạt động
+            user_states[user_id]['status'] = 'inactive'
+            if 'start_time' in user_states[user_id]:
+                del user_states[user_id]['start_time']
+            if 'action' in user_states[user_id]:
+                del user_states[user_id]['action']
+            
+            # Lưu lại trạng thái mới
+            save_user_states()
         else:
             await update.message.reply_text(
                 '❌ Bạn không có hoạt động nào đang diễn ra.',
