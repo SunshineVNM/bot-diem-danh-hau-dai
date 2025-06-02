@@ -577,13 +577,17 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
             total_duration = 0
             activity_count = 0
             
-            # Lưu hoạt động hiện tại vào user_states trước khi tính toán
+            # Khởi tạo user_states nếu chưa tồn tại
             if user_id not in user_states:
                 user_states[user_id] = {
                     'group_id': group_id,
-                    'activities': []
+                    'activities': [],
+                    'status': 'inactive'
                 }
+            elif 'activities' not in user_states[user_id]:
+                user_states[user_id]['activities'] = []
             
+            # Lưu hoạt động hiện tại
             user_states[user_id]['activities'].append({
                 'date': current_date,
                 'username': update.effective_user.full_name,
