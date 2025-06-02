@@ -127,12 +127,19 @@ def save_user_states():
             # Convert datetime objects to strings
             states_to_save = {}
             for user_id, state in user_states.items():
-                states_to_save[str(user_id)] = state
-                if 'start_time' in state:
-                    state['start_time'] = state['start_time'].isoformat()
+                states_to_save[str(user_id)] = state.copy()  # Create a copy to avoid modifying original
+                if 'start_time' in state and isinstance(state['start_time'], datetime):
+                    states_to_save[str(user_id)]['start_time'] = state['start_time'].isoformat()
+                if 'activities' in state:
+                    for activity in states_to_save[str(user_id)]['activities']:
+                        if 'start_time' in activity and isinstance(activity['start_time'], datetime):
+                            activity['start_time'] = activity['start_time'].isoformat()
+                        if 'end_time' in activity and isinstance(activity['end_time'], datetime):
+                            activity['end_time'] = activity['end_time'].isoformat()
             json.dump(states_to_save, f, ensure_ascii=False, indent=4)
     except Exception as e:
         logging.error(f"Error saving user states: {e}")
+        logging.error(f"User states content: {user_states}")
 
 def load_user_states():
     """Load user states from JSON file."""
@@ -142,9 +149,15 @@ def load_user_states():
             # Convert string keys back to integers and parse datetime
             loaded_states = {}
             for k, v in states.items():
-                if 'start_time' in v:
-                    v['start_time'] = datetime.fromisoformat(v['start_time'])
-                loaded_states[int(k)] = v
+                loaded_states[int(k)] = v.copy()  # Create a copy to avoid modifying original
+                if 'start_time' in v and isinstance(v['start_time'], str):
+                    loaded_states[int(k)]['start_time'] = datetime.fromisoformat(v['start_time'])
+                if 'activities' in v:
+                    for activity in loaded_states[int(k)]['activities']:
+                        if 'start_time' in activity and isinstance(activity['start_time'], str):
+                            activity['start_time'] = datetime.fromisoformat(activity['start_time'])
+                        if 'end_time' in activity and isinstance(activity['end_time'], str):
+                            activity['end_time'] = datetime.fromisoformat(activity['end_time'])
             return loaded_states
     except FileNotFoundError:
         return {}
