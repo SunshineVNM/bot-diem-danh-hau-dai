@@ -1106,20 +1106,15 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         current_date = datetime.now().strftime("%Y%m%d")
         logging.info(f"Starting daily report generation for date: {current_date}")
-        logging.info(f"Current timezone: {datetime.now().astimezone().tzinfo}")
-        logging.info(f"Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Kiểm tra thư mục reports
         reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
         if not os.path.exists(reports_dir):
-            logging.info(f"Creating reports directory: {reports_dir}")
             os.makedirs(reports_dir)
         
         for group_id, settings in group_settings.items():
             try:
-                logging.info(f"Processing group {group_id}: {settings}")
                 if not settings['is_setup']:
-                    logging.info(f"Group {group_id} is not setup, skipping")
                     continue
                     
                 group_name = settings['group_name']
@@ -1128,9 +1123,6 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                 if not report_group_id:
                     logging.warning(f"No report group configured for {group_name}")
                     continue
-                    
-                logging.info(f"Generating report for group {group_name} (ID: {group_id})")
-                logging.info(f"Report will be sent to group {report_group_id}")
                 
                 filename = f'activities_group_{group_id}_{current_date}.xlsx'
                 full_path = os.path.join(reports_dir, filename)
@@ -1138,24 +1130,31 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                 # Tạo DataFrame từ dữ liệu hoạt động
                 activities = []
                 for user_id, user_data in user_states.items():
-                    if user_data['group_id'] == group_id:
+                    if 'activities' in user_data:
                         for activity in user_data['activities']:
-                            if activity['date'] == current_date:
+                            # Chuyển đổi start_time từ string sang datetime nếu cần
+                            activity_start_time = activity['start_time']
+                            if isinstance(activity_start_time, str):
+                                try:
+                                    activity_start_time = datetime.fromisoformat(activity_start_time)
+                                except ValueError:
+                                    continue
+                            
+                            # Kiểm tra ngày của hoạt động
+                            if activity_start_time.strftime("%Y%m%d") == current_date:
                                 activities.append({
                                     'user_id': user_id,
-                                    'username': activity['username'],
-                                    'full_name': activity['full_name'],
-                                    'start_time': activity['start_time'],
-                                    'end_time': activity['end_time'],
-                                    'duration': activity['duration'],
-                                    'status': activity['status']
+                                    'username': activity.get('username', 'Unknown'),
+                                    'full_name': activity.get('full_name', 'Unknown'),
+                                    'start_time': activity_start_time,
+                                    'end_time': activity.get('end_time', None),
+                                    'duration': activity.get('duration', 0),
+                                    'action': activity.get('action', 'Unknown'),
+                                    'status': activity.get('status', 'Unknown')
                                 })
                 
                 if not activities:
-                    logging.info(f"No activities found for group {group_name}")
                     continue
-                
-                logging.info(f"Found {len(activities)} activities for group {group_name}")
                 
                 # Tạo DataFrame
                 df = pd.DataFrame(activities)
@@ -1187,8 +1186,6 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                                     if cell.value:
                                         cell.number_format = 'hh:mm:ss'
                 
-                logging.info(f"Generated report file: {full_path}")
-                
                 # Gửi báo cáo đến nhóm được chỉ định
                 try:
                     with open(full_path, 'rb') as f:
@@ -1198,9 +1195,9 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                             filename=filename,
                             caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
                         )
-                    logging.info(f"Report sent successfully to group {report_group_id}")
+                    logging.info(f"Report sent successfully to group {group_name}")
                 except Exception as e:
-                    logging.error(f"Error sending report to group {report_group_id}: {e}")
+                    logging.error(f"Error sending report to group {group_name}: {e}")
                 
             except Exception as e:
                 logging.error(f"Error generating report for group {group_id}: {e}")
@@ -1208,8 +1205,6 @@ async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
                 
     except Exception as e:
         logging.error(f"Error in send_daily_reports_job: {e}")
-        logging.error(f"Error type: {type(e)}")
-        logging.error(f"Error details: {str(e)}")
 
 async def safe_send_message(bot, chat_id, text, reply_to_message_id=None):
     while True:
@@ -1353,10 +1348,22 @@ def main():
     # Lên lịch gửi báo cáo lúc 23:59 mỗi ngày (UTC+7)
     utc_plus_7 = pytz.timezone('Asia/Bangkok')
     report_time = time(hour=23, minute=59, second=0, tzinfo=utc_plus_7)
+    
+    # Thêm job gửi báo cáo với các tham số
     application.job_queue.run_daily(
         send_daily_reports_job,
-        time=report_time
+        time=report_time,
+        name='daily_report',
+        days=(0, 1, 2, 3, 4, 5, 6),  # Chạy tất cả các ngày trong tuần
+        job_kwargs={
+            'misfire_grace_time': 300,  # Cho phép chạy muộn tối đa 5 phút
+            'replace_existing': True    # Thay thế job cũ nếu có
+        }
     )
+    
+    # Log thông tin về job
+    logging.info(f"Daily report job scheduled for {report_time.strftime('%H:%M:%S')} UTC+7")
+    logging.info(f"Current timezone: {datetime.now(utc_plus_7).tzinfo}")
 
     # Start the Bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)
