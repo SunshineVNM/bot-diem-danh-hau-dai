@@ -876,14 +876,22 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
         if end_time.tzinfo is not None:
             end_time = end_time.replace(tzinfo=None)
         
+        # Kiểm tra vi phạm thời gian
+        is_violation = duration > TIME_LIMITS.get(action, float('inf'))
+        violation_status = 'Có' if is_violation else 'Không'
+        violation_duration = duration - TIME_LIMITS.get(action, 0) if is_violation else 0
+        
         data = {
+            'ID Nhóm': group_id,  # Thêm ID nhóm vào dữ liệu
             'ID': user_id,
             'Tên': user_name,
             'Hành động': action,
             'Thời gian bắt đầu': start_time,
             'Thời gian kết thúc': end_time,
             'Tổng thời gian (phút)': duration,
-            'Vi phạm': 'Có' if duration > TIME_LIMITS[action] else 'Không'
+            'Thời gian cho phép (phút)': TIME_LIMITS.get(action, 0),
+            'Vi phạm': violation_status,
+            'Thời gian vi phạm (phút)': violation_duration
         }
         
         df = pd.DataFrame([data])
@@ -899,6 +907,12 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
                 logging.info(f"Reading existing Excel file: {filename}")
                 existing_df = pd.read_excel(filename)
                 logging.info(f"Existing file has {len(existing_df)} rows")
+                
+                # Lọc dữ liệu theo ID nhóm
+                existing_df = existing_df[existing_df['ID Nhóm'] == group_id]
+                logging.info(f"Filtered data has {len(existing_df)} rows for group {group_id}")
+                
+                # Thêm dữ liệu mới
                 df = pd.concat([existing_df, df], ignore_index=True)
                 logging.info(f"Combined DataFrame has {len(df)} rows")
             except Exception as e:
@@ -918,12 +932,14 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
                 # Tạo format cho vi phạm (màu đỏ)
                 red_format = workbook.add_format({'font_color': 'red'})
                 
-                # Áp dụng format cho cột Vi phạm
-                for row_num, value in enumerate(df['Vi phạm'], start=1):
-                    if value == 'Có':
-                        worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value, red_format)
+                # Áp dụng format cho cột Vi phạm và Thời gian vi phạm
+                for row_num, (violation, violation_dur) in enumerate(zip(df['Vi phạm'], df['Thời gian vi phạm (phút)']), start=1):
+                    if violation == 'Có':
+                        worksheet.write(row_num, df.columns.get_loc('Vi phạm'), violation, red_format)
+                        worksheet.write(row_num, df.columns.get_loc('Thời gian vi phạm (phút)'), violation_dur, red_format)
                     else:
-                        worksheet.write(row_num, df.columns.get_loc('Vi phạm'), value)
+                        worksheet.write(row_num, df.columns.get_loc('Vi phạm'), violation)
+                        worksheet.write(row_num, df.columns.get_loc('Thời gian vi phạm (phút)'), violation_dur)
                         
             logging.info(f"Successfully wrote to Excel file: {filename}")
             logging.info(f"File size: {os.path.getsize(filename)} bytes")
