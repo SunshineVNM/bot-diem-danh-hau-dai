@@ -211,6 +211,39 @@
                 "status": "completed",
                 "action": "🍚 Lấy Cơm",
                 "violation_duration": 0
+            },
+            {
+                "date": "20250609",
+                "username": "SUNSHINE - QL IT WEB RR88",
+                "full_name": "SUNSHINE - QL IT WEB RR88",
+                "start_time": "2025-06-09T22:12:27.623173",
+                "end_time": "2025-06-09T22:13:40.355491",
+                "duration": 1.2122053000000002,
+                "status": "violation",
+                "action": "🚶 Ra Ngoài",
+                "violation_duration": 0.21220530000000015
+            },
+            {
+                "date": "20250609",
+                "username": "SUNSHINE - QL IT WEB RR88",
+                "full_name": "SUNSHINE - QL IT WEB RR88",
+                "start_time": "2025-06-09T22:15:23.544614",
+                "end_time": "2025-06-09T22:16:38.820335",
+                "duration": 1.25459535,
+                "status": "violation",
+                "action": "🚶 Ra Ngoài",
+                "violation_duration": 0.25459535
+            },
+            {
+                "date": "20250609",
+                "username": "SUNSHINE - QL IT WEB RR88",
+                "full_name": "SUNSHINE - QL IT WEB RR88",
+                "start_time": "2025-06-09T22:16:53.994553",
+                "end_time": "2025-06-09T22:17:01.028347",
+                "duration": 0.11722990000000001,
+                "status": "completed",
+                "action": "🍚 Lấy Cơm",
+                "violation_duration": 0
             }
         ],
         "action": null,
@@ -773,15 +806,33 @@
         "status": "inactive"
     },
     "8033863017": {
-        "start_time": "2025-06-09T22:02:05.825451",
-        "activities": [],
-        "action": "🚻 Vệ Sinh 2",
-        "status": "active"
+        "start_time": null,
+        "activities": [
+            {
+                "date": "20250609",
+                "username": "ANDREE FK RR88",
+                "full_name": "ANDREE FK RR88",
+                "start_time": "2025-06-09T22:02:05.825451",
+                "end_time": "2025-06-09T22:11:56.560861",
+                "duration": 9.845590166666666,
+                "status": "completed",
+                "action": "🚻 Vệ Sinh 2",
+                "violation_duration": 0
+            }
+        ],
+        "action": null,
+        "status": "inactive"
     },
     "7493205107": {
         "start_time": null,
         "activities": [],
         "action": null,
         "status": "inactive"
+    },
+    "8191324613": {
+        "start_time": "2025-06-09T22:17:09.141607",
+        "activities": [],
+        "action": "🚻 Vệ Sinh 2",
+        "status": "active"
     }
 }

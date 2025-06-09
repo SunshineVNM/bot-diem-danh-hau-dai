@@ -22,7 +22,7 @@ logging.basicConfig(
 
 # Constants
 TIME_LIMITS = {
-    '🚶 Ra Ngoài': 1,
+    '🚶 Ra Ngoài': 5,
     '🚬 Hút Thuốc': 5,
     '🚻 Vệ Sinh 1': 10,
     '🚻 Vệ Sinh 2': 15,
@@ -567,15 +567,111 @@ async def update_countdown(user_id, chat_id, message_id, action, time_limit, con
     except Exception as e:
         logging.error(f"Error in update_countdown: {e}")
 
+async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate and send daily report."""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type == 'private':
+        await update.message.reply_text('❌ Lệnh này chỉ hoạt động trong nhóm.')
+        return
+    
+    if not (is_admin(user_id, chat_id) or is_superadmin(user_id, chat_id)):
+        await update.message.reply_text('❌ Chỉ admin hoặc superadmin mới có thể sử dụng lệnh này.')
+        return
+
+    current_date = datetime.now().strftime("%Y%m%d")
+    filename = f'activities_group_{chat_id}_{current_date}.xlsx'
+    full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
+    
+    if not os.path.exists(full_path):
+        await update.message.reply_text('📊 Chưa có dữ liệu hoạt động nào trong ngày.')
+        return
+        
+    if filename.startswith('~$'):
+        await update.message.reply_text('📊 Chưa có dữ liệu hoạt động nào trong ngày.')
+        return
+
+    group_name = group_settings[chat_id]['group_name']
+    try:
+        with open(full_path, 'rb') as f:
+            await update.message.reply_document(
+                document=f,
+                filename=filename,
+                caption=f'📊 Báo cáo hoạt động ngày hôm nay - Nhóm {group_name}'
+            )
+    except Exception as e:
+        logging.error(f"Error sending report: {e}")
+        await update.message.reply_text('❌ Có lỗi xảy ra khi gửi báo cáo. Vui lòng thử lại sau.')
+
+async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
+    """Job to send daily reports."""
+    try:
+        current_date = datetime.now().strftime("%Y%m%d")
+        
+        for group_id, settings in group_settings.items():
+            try:
+                if not settings['is_setup']:
+                    continue
+                    
+                group_name = settings['group_name']
+                report_group_id = settings.get('report_group_id')
+                
+                if not report_group_id:
+                    continue
+                
+                filename = f'activities_group_{group_id}_{current_date}.xlsx'
+                full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
+                
+                if not os.path.exists(full_path):
+                    continue
+                    
+                if filename.startswith('~$'):
+                    continue
+                
+                try:
+                    with open(full_path, 'rb') as f:
+                        await context.bot.send_document(
+                            chat_id=report_group_id,
+                            document=f,
+                            filename=filename,
+                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
+                        )
+                except Exception as e:
+                    logging.error(f"Error sending report to group {group_name}: {e}")
+                
+            except Exception as e:
+                logging.error(f"Error processing group {group_id}: {e}")
+                continue
+                
+    except Exception as e:
+        logging.error(f"Error in send_daily_reports_job: {e}")
+
 def main():
     """Start the bot."""
     application = Application.builder().token(os.getenv('TELEGRAM_TOKEN')).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("report", report))
     application.add_handler(CommandHandler("addadmin", add_admin))
     application.add_handler(CommandHandler("removeadmin", remove_admin))
     application.add_handler(CommandHandler("listadmin", list_admins))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_activity_button))
+
+    # Lên lịch gửi báo cáo lúc 23:59 mỗi ngày (UTC+7)
+    utc_plus_7 = pytz.timezone('Asia/Bangkok')
+    report_time = time(hour=22, minute=18, second=0, tzinfo=utc_plus_7)
+    
+    application.job_queue.run_daily(
+        send_daily_reports_job,
+        time=report_time,
+        name='daily_report',
+        days=(0, 1, 2, 3, 4, 5, 6),
+        job_kwargs={
+            'misfire_grace_time': 300,
+            'replace_existing': True
+        }
+    )
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
