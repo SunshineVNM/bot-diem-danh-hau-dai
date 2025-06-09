@@ -189,6 +189,28 @@
                 "duration": 19.923408216666665,
                 "status": "completed",
                 "action": "🍽️ Cất Bát"
+            },
+            {
+                "date": "20250609",
+                "username": "SUNSHINE - QL IT WEB RR88",
+                "full_name": "SUNSHINE - QL IT WEB RR88",
+                "start_time": "2025-06-09T22:02:22.873169",
+                "end_time": "2025-06-09T22:03:49.750351",
+                "duration": 1.4479530333333335,
+                "status": "violation",
+                "action": "🚶 Ra Ngoài",
+                "violation_duration": 0.4479530333333335
+            },
+            {
+                "date": "20250609",
+                "username": "SUNSHINE - QL IT WEB RR88",
+                "full_name": "SUNSHINE - QL IT WEB RR88",
+                "start_time": "2025-06-09T22:06:00.941435",
+                "end_time": "2025-06-09T22:06:03.561784",
+                "duration": 0.04367248333333333,
+                "status": "completed",
+                "action": "🍚 Lấy Cơm",
+                "violation_duration": 0
             }
         ],
         "action": null,
@@ -709,6 +731,54 @@
         "status": "inactive"
     },
     "7234072717": {
+        "start_time": null,
+        "activities": [],
+        "action": null,
+        "status": "inactive"
+    },
+    "7753905650": {
+        "start_time": null,
+        "activities": [
+            {
+                "date": "20250609",
+                "username": "BISON - FK - RR88",
+                "full_name": "BISON - FK - RR88",
+                "start_time": "2025-06-09T21:57:49.609270",
+                "end_time": "2025-06-09T21:57:50.113617",
+                "duration": 0.008405783333333333,
+                "status": "completed",
+                "action": "🚻 Vệ Sinh 1",
+                "violation_duration": 0
+            }
+        ],
+        "action": null,
+        "status": "inactive"
+    },
+    "7869373901": {
+        "start_time": null,
+        "activities": [
+            {
+                "date": "20250609",
+                "username": "ALI FK RR88",
+                "full_name": "ALI FK RR88",
+                "start_time": "2025-06-09T21:57:51.184560",
+                "end_time": "2025-06-09T22:04:07.895483",
+                "duration": 6.278515383333333,
+                "status": "completed",
+                "action": "🚻 Vệ Sinh 2",
+                "violation_duration": 0
+            }
+        ],
+        "action": null,
+        "status": "inactive"
+    },
+    "8033863017": {
+        "start_time": "2025-06-09T22:02:05.825451",
+        "activities": [],
+        "action": "🚻 Vệ Sinh 2",
+        "status": "active"
+    },
+    "7493205107": {
         "start_time": null,
         "activities": [],
         "action": null,

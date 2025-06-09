@@ -22,7 +22,7 @@ logging.basicConfig(
 
 # Constants
 TIME_LIMITS = {
-    '🚶 Ra Ngoài': 5,
+    '🚶 Ra Ngoài': 1,
     '🚬 Hút Thuốc': 5,
     '🚻 Vệ Sinh 1': 10,
     '🚻 Vệ Sinh 2': 15,
@@ -60,30 +60,16 @@ activity_keyboard = ReplyKeyboardMarkup(
     is_persistent=True
 )
 
-def create_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("🍱 Ăn Cơm", callback_data="🍱 Lấy cơm"),
-         InlineKeyboardButton("🚶 Ra Ngoài", callback_data="🚶 Ra ngoài"),
-         InlineKeyboardButton("🚬 Hút Thuốc", callback_data="🚬 Hút thuốc")],
-        [InlineKeyboardButton("🚻 Vệ Sinh-1", callback_data="🚻 Vệ sinh (1)"),
-         InlineKeyboardButton("🚻 Vệ Sinh-2", callback_data="🚻 Vệ sinh (2)")],
-        [InlineKeyboardButton("🧹 Cất Bát", callback_data="🧹 Cất bát")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 def get_group_excel_filename(group_id):
     """Generate Excel filename for a specific group."""
-    # Tạo thư mục reports nếu chưa tồn tại
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
     os.makedirs(reports_dir, exist_ok=True)
     
-    # Tạo tên file với đường dẫn đầy đủ
     utc_plus_7 = pytz.timezone('Asia/Bangkok')
     now = datetime.now(utc_plus_7)
     filename = f'activities_group_{group_id}_{now.strftime("%Y%m%d")}.xlsx'
     full_path = os.path.join(reports_dir, filename)
     
-    logging.info(f"Excel file will be saved to: {full_path}")
     return full_path
 
 def is_superadmin(user_id, chat_id):
@@ -104,7 +90,6 @@ def is_admin(user_id, chat_id):
 def save_group_settings():
     """Save group settings to JSON file."""
     with open('group_settings.json', 'w', encoding='utf-8') as f:
-        # Convert datetime objects to strings
         settings_to_save = {}
         for group_id, settings in group_settings.items():
             settings_to_save[str(group_id)] = settings
@@ -115,7 +100,6 @@ def load_group_settings():
     try:
         with open('group_settings.json', 'r', encoding='utf-8') as f:
             settings = json.load(f)
-            # Convert string keys back to integers
             return {int(k): v for k, v in settings.items()}
     except FileNotFoundError:
         return {}
@@ -124,10 +108,9 @@ def save_user_states():
     """Save user states to JSON file."""
     try:
         with open('user_states.json', 'w', encoding='utf-8') as f:
-            # Convert datetime objects to strings
             states_to_save = {}
             for user_id, state in user_states.items():
-                states_to_save[str(user_id)] = state.copy()  # Create a copy to avoid modifying original
+                states_to_save[str(user_id)] = state.copy()
                 if 'start_time' in state and isinstance(state['start_time'], datetime):
                     states_to_save[str(user_id)]['start_time'] = state['start_time'].isoformat()
                 if 'activities' in state:
@@ -136,7 +119,6 @@ def save_user_states():
                             activity['start_time'] = activity['start_time'].isoformat()
                         if 'end_time' in activity and isinstance(activity['end_time'], datetime):
                             activity['end_time'] = activity['end_time'].isoformat()
-                        # Ensure duration is a number
                         if 'duration' in activity:
                             if isinstance(activity['duration'], str):
                                 try:
@@ -144,20 +126,16 @@ def save_user_states():
                                 except ValueError:
                                     activity['duration'] = 0.0
             json.dump(states_to_save, f, ensure_ascii=False, indent=4)
-            logging.info(f"Saved user states: {states_to_save}")
     except Exception as e:
         logging.error(f"Error saving user states: {e}")
-        logging.error(f"User states content: {user_states}")
 
 def load_user_states():
     """Load user states from JSON file."""
     try:
         with open('user_states.json', 'r', encoding='utf-8') as f:
             states = json.load(f)
-            # Convert string keys back to integers and parse datetime
             loaded_states = {}
             for k, v in states.items():
-                # Đảm bảo cấu trúc dữ liệu đầy đủ
                 loaded_states[int(k)] = {
                     'start_time': None,
                     'activities': [],
@@ -165,18 +143,15 @@ def load_user_states():
                     'status': 'inactive'
                 }
                 
-                # Cập nhật các giá trị từ file
                 if 'start_time' in v and isinstance(v['start_time'], str):
                     loaded_states[int(k)]['start_time'] = datetime.fromisoformat(v['start_time'])
                 if 'activities' in v:
                     loaded_states[int(k)]['activities'] = v['activities']
-                    # Chuyển đổi datetime trong activities
                     for activity in loaded_states[int(k)]['activities']:
                         if 'start_time' in activity and isinstance(activity['start_time'], str):
                             activity['start_time'] = datetime.fromisoformat(activity['start_time'])
                         if 'end_time' in activity and isinstance(activity['end_time'], str):
                             activity['end_time'] = datetime.fromisoformat(activity['end_time'])
-                        # Đảm bảo duration là số
                         if 'duration' in activity:
                             if isinstance(activity['duration'], str):
                                 try:
@@ -187,11 +162,8 @@ def load_user_states():
                     loaded_states[int(k)]['action'] = v['action']
                 if 'status' in v:
                     loaded_states[int(k)]['status'] = v['status']
-                    
-            logging.info(f"Loaded user states: {loaded_states}")
             return loaded_states
     except FileNotFoundError:
-        logging.info("No user_states.json file found, starting with empty states")
         return {}
     except Exception as e:
         logging.error(f"Error loading user states: {e}")
@@ -226,10 +198,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'admin_ids': [user_id],
         'superadmin_ids': [user_id],
         'group_name': update.effective_chat.title,
-        'report_group_id': -1002560630146  # Kênh mặc định để nhận báo cáo
+        'report_group_id': -1002560630146
     }
     
-    # Save settings after modification
     save_group_settings()
     
     await update.message.reply_text(
@@ -262,7 +233,7 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         group_settings[group_id]['admin_ids'].append(new_admin_id)
-        save_group_settings()  # Save after modification
+        save_group_settings()
         await update.message.reply_text(f'✅ Đã thêm admin mới với ID: {new_admin_id}')
     except ValueError:
         await update.message.reply_text('❌ ID không hợp lệ. Vui lòng nhập số.')
@@ -290,7 +261,7 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         group_settings[group_id]['admin_ids'].remove(admin_id)
-        save_group_settings()  # Save after modification
+        save_group_settings()
         await update.message.reply_text(f'✅ Đã xóa admin với ID: {admin_id}')
     except ValueError:
         await update.message.reply_text('❌ ID không hợp lệ. Vui lòng nhập số.')
@@ -317,208 +288,10 @@ async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(admin_text)
 
-async def add_superadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Add a new superadmin to the group."""
-    if not is_superadmin(update.effective_user.id, update.effective_chat.id):
-        await update.message.reply_text('❌ Chỉ superadmin mới có thể sử dụng lệnh này.')
-        return
-
-    if not context.args:
-        await update.message.reply_text('❌ Vui lòng nhập ID của người dùng cần thêm làm superadmin.')
-        return
-
-    try:
-        new_superadmin_id = int(context.args[0])
-        group_id = update.effective_chat.id
-        
-        if new_superadmin_id in group_settings[group_id]['superadmin_ids']:
-            await update.message.reply_text('❌ Người này đã là superadmin.')
-            return
-
-        # Thêm vào cả danh sách admin và superadmin
-        group_settings[group_id]['admin_ids'].append(new_superadmin_id)
-        group_settings[group_id]['superadmin_ids'].append(new_superadmin_id)
-        save_group_settings()  # Save after modification
-        await update.message.reply_text(f'✅ Đã thêm superadmin mới với ID: {new_superadmin_id}')
-    except ValueError:
-        await update.message.reply_text('❌ ID không hợp lệ. Vui lòng nhập số.')
-
-async def remove_superadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Remove a superadmin from the group."""
-    if not is_superadmin(update.effective_user.id, update.effective_chat.id):
-        await update.message.reply_text('❌ Chỉ superadmin mới có thể sử dụng lệnh này.')
-        return
-
-    if not context.args:
-        await update.message.reply_text('❌ Vui lòng nhập ID của superadmin cần xóa.')
-        return
-
-    try:
-        superadmin_id = int(context.args[0])
-        group_id = update.effective_chat.id
-        
-        if superadmin_id not in group_settings[group_id]['superadmin_ids']:
-            await update.message.reply_text('❌ Không tìm thấy superadmin này.')
-            return
-
-        if len(group_settings[group_id]['superadmin_ids']) <= 1:
-            await update.message.reply_text('❌ Không thể xóa superadmin cuối cùng.')
-            return
-
-        # Xóa khỏi cả danh sách admin và superadmin
-        group_settings[group_id]['admin_ids'].remove(superadmin_id)
-        group_settings[group_id]['superadmin_ids'].remove(superadmin_id)
-        save_group_settings()  # Save after modification
-        await update.message.reply_text(f'✅ Đã xóa superadmin với ID: {superadmin_id}')
-    except ValueError:
-        await update.message.reply_text('❌ ID không hợp lệ. Vui lòng nhập số.')
-
-async def list_superadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List all superadmins in the group."""
-    if not is_admin(update.effective_user.id, update.effective_chat.id):
-        await update.message.reply_text('❌ Chỉ admin mới có thể sử dụng lệnh này.')
-        return
-
-    group_id = update.effective_chat.id
-    superadmin_list = group_settings[group_id]['superadmin_ids']
-    
-    admin_text = "👑 Danh sách superadmin:\n"
-    for superadmin_id in superadmin_list:
-        try:
-            chat_member = await context.bot.get_chat_member(group_id, superadmin_id)
-            admin_text += f"- {chat_member.user.full_name} (ID: {superadmin_id})\n"
-        except:
-            admin_text += f"- ID: {superadmin_id}\n"
-    
-    await update.message.reply_text(admin_text)
-
-async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle check-in command."""
-    if update.effective_chat.type == 'private':
-        await update.message.reply_text('❌ Lệnh này chỉ hoạt động trong nhóm.')
-        return
-
-    group_id = update.effective_chat.id
-    if group_id not in group_settings or not group_settings[group_id]['is_setup']:
-        await update.message.reply_text('❌ Bot chưa được cấu hình cho nhóm này. Vui lòng liên hệ admin.')
-        return
-
-    user_id = update.effective_user.id
-    if user_id not in user_states or user_states[user_id]['status'] != 'active':
-        await update.message.reply_text('❌ Bạn chưa có hoạt động nào đang diễn ra.')
-        return
-
-    # Tạo bàn phím chỉ với nút quay về cho hoạt động hiện tại
-    reply_keyboard = [["🔙 Quay về"]]
-    reply_markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-
-    await update.message.reply_text(
-        f'Vui lòng nhấn nút bên dưới để kết thúc hoạt động {user_states[user_id]["action"]}:',
-        reply_markup=reply_markup
-    )
-
-async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle check-out command."""
-    if update.effective_chat.type == 'private':
-        await update.message.reply_text('❌ Lệnh này chỉ hoạt động trong nhóm.')
-        return
-
-    user_id = update.effective_user.id
-    if user_id in user_states and user_states[user_id]['status'] == 'active':
-        await update.message.reply_text(
-            f'⚠️ Bạn đang trong trạng thái {user_states[user_id]["action"]}.\n'
-        )
-        return
-
-    await update.message.reply_text(
-        f'👋 Xin chào {update.effective_user.full_name}!\n'
-        'Vui lòng chọn hành động của bạn:',
-        reply_markup=activity_keyboard
-    )
-
-async def update_countdown(user_id, chat_id, message_id, action, time_limit, context):
-    """Update countdown timer."""
-    try:
-        logging.info(f"Starting countdown for user {user_id}, action {action}, time limit {time_limit}")
-        
-        if user_id not in user_states:
-            logging.warning(f"User {user_id} not found in user_states")
-            return
-        
-        start_time = user_states[user_id]['start_time']
-        end_time = start_time + timedelta(minutes=time_limit)
-        now = datetime.now()
-        
-        # Tính thời gian còn lại
-        remaining = (end_time - now).total_seconds()
-        logging.info(f"Time remaining: {remaining} seconds")
-        
-        # Chờ đến khi còn 1 phút
-        if remaining > 60:
-            wait_time = remaining - 60
-            logging.info(f"Waiting {wait_time} seconds until 1 minute warning")
-            await asyncio.sleep(wait_time)
-            
-            # Kiểm tra lại trạng thái
-            if user_id not in user_states or user_states[user_id]['status'] != 'active':
-                logging.info(f"User {user_id} is no longer active, stopping countdown")
-                return
-                
-            logging.info(f"Sending 1 minute warning for user {user_id}")
-            await safe_send_message(
-                context.bot, 
-                chat_id, 
-                text=f"⚠️⏳ CẢNH BÁO: Hoạt động {action} còn 1 phút nữa sẽ hết thời gian cho phép!", 
-                reply_to_message_id=message_id
-            )
-            remaining = 60
-        
-        # Chờ đến khi còn 20 giây
-        if remaining > 20:
-            wait_time = remaining - 20
-            logging.info(f"Waiting {wait_time} seconds until 20 seconds warning")
-            await asyncio.sleep(wait_time)
-            
-            # Kiểm tra lại trạng thái
-            if user_id not in user_states or user_states[user_id]['status'] != 'active':
-                logging.info(f"User {user_id} is no longer active, stopping countdown")
-                return
-                
-            logging.info(f"Sending 20 seconds warning for user {user_id}")
-            await safe_send_message(
-                context.bot, 
-                chat_id, 
-                text=f'🚨 CẢNH BÁO KHẨN CẤP: Hoạt động {action} chỉ còn 20 giây nữa!\nẤn quay về ngay lập tức!', 
-                reply_to_message_id=message_id
-            )
-            remaining = 20
-        
-        # Chờ đến hết giờ
-        logging.info(f"Waiting final {remaining} seconds")
-        await asyncio.sleep(remaining)
-        
-        # Kiểm tra lại trạng thái
-        if user_id in user_states and user_states[user_id]['status'] == 'active':
-            logging.info(f"Sending time up warning for user {user_id}")
-            await safe_send_message(
-                context.bot, 
-                chat_id, 
-                text=f'⏰ ĐÃ HẾT THỜI GIAN CHO PHÉP!\nHoạt động: {action}\nThời gian cho phép: {time_limit} phút\nVui lòng ấn nút "Quay về" để kết thúc hoạt động.', 
-                reply_to_message_id=message_id
-            )
-            
-    except Exception as e:
-        logging.error(f"Error in update_countdown: {e}")
-        logging.error(f"User ID: {user_id}")
-        logging.error(f"Action: {action}")
-        logging.error(f"Time limit: {time_limit}")
-        logging.error(f"Stack trace:", exc_info=True)
-
 async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle activity button press."""
     user_id = update.effective_user.id
     
-    # Khởi tạo trạng thái cho user nếu chưa có
     if user_id not in user_states:
         user_states[user_id] = {
             'start_time': None,
@@ -527,13 +300,10 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
             'status': 'inactive'
         }
     
-    # Xử lý nút từ ReplyKeyboardMarkup
     if update.message and update.message.text:
         current_action = update.message.text
-        # Xử lý nút Quay về
         if current_action == "🔙 Quay về":
             if user_states[user_id]['start_time'] is not None:
-                # Hủy task đếm ngược nếu có
                 if user_id in countdown_tasks:
                     countdown_tasks[user_id].cancel()
                     del countdown_tasks[user_id]
@@ -542,7 +312,9 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 end_time = datetime.now()
                 duration = (end_time - start_time).total_seconds() / 60
                 
-                # Tạo bản ghi hoạt động mới
+                is_violation = duration > TIME_LIMITS.get(user_states[user_id]['action'], float('inf'))
+                status = 'violation' if is_violation else 'completed'
+                
                 current_activity = {
                     'date': end_time.strftime("%Y%m%d"),
                     'username': update.effective_user.full_name,
@@ -550,22 +322,20 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     'start_time': start_time,
                     'end_time': end_time,
                     'duration': duration,
-                    'status': 'completed',
-                    'action': user_states[user_id].get('action', 'Unknown')
+                    'status': status,
+                    'action': user_states[user_id].get('action', 'Unknown'),
+                    'violation_duration': duration - TIME_LIMITS.get(user_states[user_id]['action'], 0) if is_violation else 0
                 }
                 
-                # Thêm hoạt động mới vào danh sách
                 user_states[user_id]['activities'].append(current_activity)
                 
-                # Tính toán thống kê
                 current_date = end_time.strftime("%Y%m%d")
                 total_duration = 0
                 activity_count = 0
+                violation_count = 0
                 
-                # Lọc và tính toán thống kê cho ngày hiện tại dựa vào start_time
                 today_activities = []
                 for activity in user_states[user_id]['activities']:
-                    # Chuyển đổi start_time từ string sang datetime nếu cần
                     activity_start_time = activity['start_time']
                     if isinstance(activity_start_time, str):
                         try:
@@ -573,11 +343,11 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                         except ValueError:
                             continue
                     
-                    # So sánh ngày
                     if activity_start_time.strftime("%Y%m%d") == current_date:
                         today_activities.append(activity)
+                        if activity['status'] == 'violation':
+                            violation_count += 1
                 
-                # Tính tổng thời gian và số lần hoạt động
                 for activity in today_activities:
                     activity_duration = activity['duration']
                     if isinstance(activity_duration, str):
@@ -588,7 +358,6 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     total_duration += activity_duration
                     activity_count += 1
                 
-                # Ghi hoạt động vào Excel
                 success = record_activity(
                     update.effective_chat.id,
                     user_id,
@@ -599,17 +368,14 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     duration
                 )
                 
-                # Reset thời gian bắt đầu
                 user_states[user_id]['start_time'] = None
                 user_states[user_id]['action'] = None
                 user_states[user_id]['status'] = 'inactive'
                 
-                # Tạo thông báo kết quả
                 duration_minutes = int(duration)
                 duration_seconds = int((duration - duration_minutes) * 60)
                 duration_str = f"{duration_minutes:02d}:{duration_seconds:02d}"
                 
-                # Kiểm tra vi phạm
                 is_violation = duration > TIME_LIMITS.get(current_activity['action'], float('inf'))
                 status_icon = "❌" if is_violation else "✅"
                 status_text = "VI PHẠM" if is_violation else "HỢP LỆ"
@@ -624,6 +390,7 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                     f"📅 Ngày: {start_time.strftime('%d/%m/%Y')}\n"
                     f"📈 Tổng thời gian hôm nay: {total_duration:.2f} phút\n"
                     f"🔢 Số lần hoạt động: {activity_count}\n"
+                    f"⚠️ Số lần vi phạm: {violation_count}\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"{status_icon} Trạng thái: {status_text}\n"
                 )
@@ -640,9 +407,7 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 )
             return
             
-        # Xử lý các nút hoạt động khác
         if current_action in TIME_LIMITS:
-            # Nếu đang có hoạt động khác
             if user_states[user_id]['start_time'] is not None:
                 await update.message.reply_text(
                     f'⚠️ Bạn đang trong hoạt động khác.\n'
@@ -651,7 +416,6 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 )
                 return
             
-            # Bắt đầu hoạt động mới
             current_time = datetime.now()
             user_states[user_id]['start_time'] = current_time
             user_states[user_id]['action'] = current_action
@@ -664,7 +428,6 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 reply_markup=activity_keyboard
             )
             
-            # Bắt đầu task đếm ngược
             countdown_tasks[user_id] = asyncio.create_task(
                 update_countdown(
                     user_id=user_id,
@@ -676,213 +439,24 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
                 )
             )
             save_user_states()
-    
-    # Xử lý nút từ InlineKeyboardMarkup
-    elif update.callback_query:
-        query = update.callback_query
-        await query.answer()
-        current_action = query.data
-        
-        # Lấy thời gian hiện tại
-        current_time = datetime.now()
-        
-        # Nếu chưa có thời gian bắt đầu, lưu thời gian bắt đầu
-        if user_states[user_id]['start_time'] is None:
-            user_states[user_id]['start_time'] = current_time
-            user_states[user_id]['action'] = current_action
-            user_states[user_id]['status'] = 'active'
-            
-            # Tạo bàn phím reply chỉ với nút Quay về
-            reply_keyboard = [["🔙 Quay về"]]
-            reply_markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-            
-            message = await query.edit_message_text(
-                f"Bạn đã bắt đầu hoạt động {current_action}.\n"
-                f"Thời gian bắt đầu: {current_time.strftime('%H:%M:%S')}\n"
-                f"Thời gian cho phép: {TIME_LIMITS[current_action]} phút"
-            )
-            
-            # Gửi bàn phím reply
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="Nhấn 'Quay về' khi bạn đã quay lại.",
-                reply_markup=reply_markup
-            )
-            
-            # Bắt đầu task đếm ngược
-            if user_id in countdown_tasks:
-                countdown_tasks[user_id].cancel()
-            
-            countdown_tasks[user_id] = asyncio.create_task(
-                update_countdown(
-                    user_id=user_id,
-                    chat_id=message.chat_id,
-                    message_id=message.message_id,
-                    action=current_action,
-                    time_limit=TIME_LIMITS[current_action],
-                    context=context
-                )
-            )
-            save_user_states()
-            return
-        
-        # Tính thời gian hoạt động
-        start_time = user_states[user_id]['start_time']
-        end_time = current_time
-        duration = (end_time - start_time).total_seconds() / 60
-        
-        # Tạo bản ghi hoạt động mới
-        current_activity = {
-            'date': current_time.strftime("%Y%m%d"),
-            'username': update.effective_user.full_name,
-            'full_name': update.effective_user.full_name,
-            'start_time': start_time,
-            'end_time': end_time,
-            'duration': duration,
-            'status': 'completed',
-            'action': current_action
-        }
-        
-        # Thêm hoạt động mới vào danh sách
-        user_states[user_id]['activities'].append(current_activity)
-        
-        # Tính toán thống kê
-        current_date = current_time.strftime("%Y%m%d")
-        total_duration = 0
-        activity_count = 0
-        
-        # Lọc và tính toán thống kê cho ngày hiện tại dựa vào start_time
-        today_activities = []
-        for activity in user_states[user_id]['activities']:
-            # Chuyển đổi start_time từ string sang datetime nếu cần
-            activity_start_time = activity['start_time']
-            if isinstance(activity_start_time, str):
-                try:
-                    activity_start_time = datetime.fromisoformat(activity_start_time)
-                except ValueError:
-                    continue
-            
-            # So sánh ngày
-            if activity_start_time.strftime("%Y%m%d") == current_date:
-                today_activities.append(activity)
-        
-        # Tính tổng thời gian và số lần hoạt động
-        for activity in today_activities:
-            activity_duration = activity['duration']
-            if isinstance(activity_duration, str):
-                try:
-                    activity_duration = float(activity_duration)
-                except ValueError:
-                    continue
-            total_duration += activity_duration
-            activity_count += 1
-        
-        # Tạo thông báo kết quả
-        duration_minutes = int(duration)
-        duration_seconds = int((duration - duration_minutes) * 60)
-        duration_str = f"{duration_minutes:02d}:{duration_seconds:02d}"
-        
-        # Kiểm tra vi phạm
-        is_violation = duration > TIME_LIMITS.get(current_action, float('inf'))
-        status_icon = "❌" if is_violation else "✅"
-        status_text = "VI PHẠM" if is_violation else "HỢP LỆ"
-        
-        result_message = (
-            f"📊 KẾT QUẢ HOẠT ĐỘNG\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 Hoạt động: {current_activity['action']}\n"
-            f"⏱️ Thời gian bắt đầu: {start_time.strftime('%H:%M:%S')}\n"
-            f"⏱️ Thời gian kết thúc: {end_time.strftime('%H:%M:%S')}\n"
-            f"⏱️ Thời gian hoạt động: {duration_str}\n"
-            f"📅 Ngày: {start_time.strftime('%d/%m/%Y')}\n"
-            f"📈 Tổng thời gian hôm nay: {total_duration:.2f} phút\n"
-            f"🔢 Số lần hoạt động: {activity_count}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{status_icon} Trạng thái: {status_text}\n"
-        )
-        
-        if is_violation:
-            result_message += f"⚠️ Vượt quá thời gian cho phép ({TIME_LIMITS[current_activity['action']]} phút)"
-        
-        await query.edit_message_text(result_message)
-        save_user_states()
-
-async def handle_return(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle when user clicks the return button."""
-    user_id = update.effective_user.id
-    if user_id in user_states and user_states[user_id]['status'] == 'active':
-        action = user_states[user_id]['action']
-        start_time = user_states[user_id]['start_time']
-        end_time = get_current_time()  # Sử dụng get_current_time() thay vì datetime.now()
-        duration = (end_time - start_time).total_seconds() / 60
-
-        # Hủy task đếm ngược nếu có
-        if user_id in countdown_tasks:
-            countdown_tasks[user_id].cancel()
-            del countdown_tasks[user_id]
-
-        # Ghi log hoạt động
-        group_id = update.effective_chat.id
-        record_activity(
-            group_id, user_id, update.effective_user.full_name,
-            action, start_time, end_time, duration
-        )
-
-        # Thông báo kết quả
-        if duration > TIME_LIMITS[action]:
-            await update.message.reply_text(
-                f'⚠️ Vi phạm thời gian!\n'
-                f'Hành động: {action}\n'
-                f'Thời gian cho phép: {TIME_LIMITS[action]} phút\n'
-                f'Thời gian thực tế: {duration:.1f} phút',
-                reply_markup=activity_keyboard
-            )
-        else:
-            await update.message.reply_text(
-                f'✅🎉 Hoàn thành!\n'
-                f'Hành động: {action}\n'
-                f'Thời gian: {duration:.1f} phút',
-                reply_markup=activity_keyboard
-            )
-
-        # Xóa trạng thái user sau khi đã xử lý xong
-        if user_id in user_states:
-            del user_states[user_id]
-    else:
-        # Nếu không có trạng thái active, thông báo cho người dùng
-        await update.message.reply_text(
-            '❌ Bạn không có hoạt động nào đang diễn ra.',
-            reply_markup=activity_keyboard
-        )
 
 def record_activity(group_id, user_id, user_name, action, start_time, end_time, duration):
     """Record activity in Excel file."""
     success = False
     try:
         filename = get_group_excel_filename(group_id)
-        logging.info(f"=== Bắt đầu ghi hoạt động ===")
-        logging.info(f"Group ID: {group_id}")
-        logging.info(f"User ID: {user_id}")
-        logging.info(f"User Name: {user_name}")
-        logging.info(f"Action: {action}")
-        logging.info(f"Start Time: {start_time}")
-        logging.info(f"End Time: {end_time}")
-        logging.info(f"Duration: {duration} phút")
-        logging.info(f"Excel File: {filename}")
         
-        # Convert to timezone-naive datetime for Excel
         if start_time.tzinfo is not None:
             start_time = start_time.replace(tzinfo=None)
         if end_time.tzinfo is not None:
             end_time = end_time.replace(tzinfo=None)
         
-        # Kiểm tra vi phạm thời gian
         is_violation = duration > TIME_LIMITS.get(action, float('inf'))
         violation_status = 'Có' if is_violation else 'Không'
         violation_duration = duration - TIME_LIMITS.get(action, 0) if is_violation else 0
         
         data = {
-            'ID Nhóm': group_id,  # Thêm ID nhóm vào dữ liệu
+            'ID Nhóm': group_id,
             'ID': user_id,
             'Tên': user_name,
             'Hành động': action,
@@ -895,44 +469,26 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
         }
         
         df = pd.DataFrame([data])
-        logging.info(f"DataFrame created with {len(df)} rows")
         
-        # Tạo thư mục nếu chưa tồn tại
         os.makedirs(os.path.dirname(filename), exist_ok=True)
-        logging.info(f"Directory created/checked: {os.path.dirname(filename)}")
         
-        # Kiểm tra file có tồn tại không
         if os.path.exists(filename):
             try:
-                logging.info(f"Reading existing Excel file: {filename}")
                 existing_df = pd.read_excel(filename)
-                logging.info(f"Existing file has {len(existing_df)} rows")
-                
-                # Lọc dữ liệu theo ID nhóm
                 existing_df = existing_df[existing_df['ID Nhóm'] == group_id]
-                logging.info(f"Filtered data has {len(existing_df)} rows for group {group_id}")
-                
-                # Thêm dữ liệu mới
                 df = pd.concat([existing_df, df], ignore_index=True)
-                logging.info(f"Combined DataFrame has {len(df)} rows")
             except Exception as e:
                 logging.error(f"Error reading existing Excel file: {e}")
-                logging.info("Creating new Excel file")
         
-        # Ghi file Excel
         try:
-            logging.info(f"Writing to Excel file: {filename}")
             with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
                 
-                # Lấy workbook và worksheet
                 workbook = writer.book
                 worksheet = writer.sheets['Sheet1']
                 
-                # Tạo format cho vi phạm (màu đỏ)
                 red_format = workbook.add_format({'font_color': 'red'})
                 
-                # Áp dụng format cho cột Vi phạm và Thời gian vi phạm
                 for row_num, (violation, violation_dur) in enumerate(zip(df['Vi phạm'], df['Thời gian vi phạm (phút)']), start=1):
                     if violation == 'Có':
                         worksheet.write(row_num, df.columns.get_loc('Vi phạm'), violation, red_format)
@@ -941,447 +497,86 @@ def record_activity(group_id, user_id, user_name, action, start_time, end_time, 
                         worksheet.write(row_num, df.columns.get_loc('Vi phạm'), violation)
                         worksheet.write(row_num, df.columns.get_loc('Thời gian vi phạm (phút)'), violation_dur)
                         
-            logging.info(f"Successfully wrote to Excel file: {filename}")
-            logging.info(f"File size: {os.path.getsize(filename)} bytes")
             success = True
         except Exception as e:
             logging.error(f"Error writing to Excel file: {e}")
-            # Thử ghi file tạm
             temp_filename = f"{filename}.temp"
             try:
-                logging.info(f"Attempting to write to temp file: {temp_filename}")
                 df.to_excel(temp_filename, index=False)
                 if os.path.exists(filename):
                     os.remove(filename)
                 os.rename(temp_filename, filename)
-                logging.info(f"Successfully wrote to temp file and renamed: {filename}")
-                logging.info(f"Final file size: {os.path.getsize(filename)} bytes")
                 success = True
             except Exception as e2:
                 logging.error(f"Error writing to temp file: {e2}")
                 
     except Exception as e:
         logging.error(f"Error in record_activity: {e}")
-        # Ghi log chi tiết lỗi
-        logging.error(f"Group ID: {group_id}")
-        logging.error(f"User ID: {user_id}")
-        logging.error(f"Action: {action}")
-        logging.error(f"Start time: {start_time}")
-        logging.error(f"End time: {end_time}")
-        logging.error(f"Duration: {duration}")
-    finally:
-        logging.info("=== Kết thúc ghi hoạt động ===")
-        return success
+        logging.error(f"Group ID: {group_id}, User ID: {user_id}, Action: {action}")
+    return success
 
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Generate and send daily report."""
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    
-    # Log thông tin cơ bản
-    logging.info(f"Report command called by user {user_id} in chat {chat_id}")
-    
-    # Kiểm tra xem đây có phải là nhóm không
-    if update.effective_chat.type == 'private':
-        logging.warning(f"Command used in private chat {chat_id}")
-        await update.message.reply_text('❌ Lệnh này chỉ hoạt động trong nhóm.')
-        return
-    
-    # Cho phép cả admin và superadmin dùng lệnh
-    if not (is_admin(user_id, chat_id) or is_superadmin(user_id, chat_id)):
-        logging.warning(f"User {user_id} is not admin/superadmin in chat {chat_id}")
-        await update.message.reply_text('❌ Chỉ admin hoặc superadmin mới có thể sử dụng lệnh này.')
-        return
-
-    # Lấy tên file Excel thực tế
-    current_date = datetime.now().strftime("%Y%m%d")
-    filename = f'activities_group_{chat_id}_{current_date}.xlsx'
-    full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
-    logging.info(f"Looking for report file: {full_path}")
-    
-    # Kiểm tra xem file có tồn tại không
-    if not os.path.exists(full_path):
-        logging.warning(f"Report file does not exist: {full_path}")
-        await update.message.reply_text('📊 Chưa có dữ liệu hoạt động nào trong ngày.')
-        return
-        
-    if filename.startswith('~$'):
-        logging.warning(f"Report file is a temporary file: {full_path}")
-        await update.message.reply_text('📊 Chưa có dữ liệu hoạt động nào trong ngày.')
-        return
-
-    # Log thông tin file
-    file_size = os.path.getsize(full_path)
-    logging.info(f"Report file exists, size: {file_size} bytes")
-
-    group_name = group_settings[chat_id]['group_name']
+async def update_countdown(user_id, chat_id, message_id, action, time_limit, context):
+    """Update countdown timer."""
     try:
-        logging.info(f"Sending report for group {group_name}")
-        # Mở file trong chế độ binary
-        with open(full_path, 'rb') as f:
-            await update.message.reply_document(
-                document=f,
-                filename=filename,
-                caption=f'📊 Báo cáo hoạt động ngày hôm nay - Nhóm {group_name}'
-            )
-        logging.info("Report sent successfully")
-    except Exception as e:
-        logging.error(f"Error sending report: {e}")
-        logging.error(f"Error type: {type(e)}")
-        logging.error(f"Error details: {str(e)}")
-        await update.message.reply_text('❌ Có lỗi xảy ra khi gửi báo cáo. Vui lòng thử lại sau.')
-
-async def send_daily_reports(context: ContextTypes.DEFAULT_TYPE):
-    """Send daily reports to all admins in all groups."""
-    try:
-        current_date = datetime.now().strftime("%Y%m%d")
-        logging.info(f"Starting daily report sending for date: {current_date}")
-        
-        for group_id, settings in group_settings.items():
-            try:
-                if not settings['is_setup']:
-                    logging.info(f"Group {group_id} is not setup, skipping")
-                    continue
-                    
-                filename = f'activities_group_{group_id}_{current_date}.xlsx'
-                full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', filename)
-                logging.info(f"Checking for report file: {full_path}")
-                
-                if not os.path.exists(full_path):
-                    logging.warning(f"Report file not found: {full_path}")
-                    continue
-                    
-                group_name = settings['group_name']
-                admin_ids = settings['admin_ids']
-                report_group_id = settings.get('report_group_id')
-                
-                # Gửi báo cáo vào nhóm được chỉ định
-                if report_group_id:
-                    try:
-                        logging.info(f"Sending report to report group {report_group_id}")
-                        # Mở file trong chế độ binary
-                        with open(full_path, 'rb') as f:
-                            await context.bot.send_message(
-                                chat_id=report_group_id,
-                                text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                                     f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
-                            )
-                            await context.bot.send_document(
-                                chat_id=report_group_id,
-                                document=f,
-                                filename=filename,
-                                caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
-                            )
-                        logging.info(f"Successfully sent report to report group {report_group_id}")
-                    except Exception as e:
-                        logging.error(f"Error sending report to report group {report_group_id}: {e}")
-                        logging.error(f"Error type: {type(e)}")
-                        logging.error(f"Error details: {str(e)}")
-                
-                # Gửi báo cáo riêng cho từng admin
-                for admin_id in admin_ids:
-                    try:
-                        logging.info(f"Sending report to admin {admin_id}")
-                        # Mở file trong chế độ binary
-                        with open(full_path, 'rb') as f:
-                            # Gửi thông báo trước
-                            await context.bot.send_message(
-                                chat_id=admin_id,
-                                text=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                                     f'Vui lòng đợi trong giây lát...'
-                            )
-                            
-                            # Gửi file Excel
-                            await context.bot.send_document(
-                                chat_id=admin_id,
-                                document=f,
-                                filename=filename,
-                                caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}\n'
-                                       f'Thời gian gửi: {datetime.now().strftime("%H:%M:%S")}'
-                            )
-                        logging.info(f"Successfully sent report to admin {admin_id}")
-                    except Exception as e:
-                        logging.error(f"Error sending report to admin {admin_id}: {e}")
-                        logging.error(f"Error type: {type(e)}")
-                        logging.error(f"Error details: {str(e)}")
-                        continue
-                        
-            except Exception as e:
-                logging.error(f"Error processing group {group_id}: {e}")
-                logging.error(f"Error type: {type(e)}")
-                logging.error(f"Error details: {str(e)}")
-                continue
-                
-    except Exception as e:
-        logging.error(f"Error in send_daily_reports: {e}")
-        logging.error(f"Error type: {type(e)}")
-        logging.error(f"Error details: {str(e)}")
-
-async def send_daily_reports_job(context: ContextTypes.DEFAULT_TYPE):
-    """Job to send daily reports."""
-    try:
-        current_date = datetime.now().strftime("%Y%m%d")
-        logging.info(f"Starting daily report generation for date: {current_date}")
-        
-        # Kiểm tra thư mục reports
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
-        if not os.path.exists(reports_dir):
-            os.makedirs(reports_dir)
-        
-        for group_id, settings in group_settings.items():
-            try:
-                if not settings['is_setup']:
-                    continue
-                    
-                group_name = settings['group_name']
-                report_group_id = settings.get('report_group_id')
-                
-                if not report_group_id:
-                    logging.warning(f"No report group configured for {group_name}")
-                    continue
-                
-                filename = f'activities_group_{group_id}_{current_date}.xlsx'
-                full_path = os.path.join(reports_dir, filename)
-                
-                # Tạo DataFrame từ dữ liệu hoạt động
-                activities = []
-                for user_id, user_data in user_states.items():
-                    if 'activities' in user_data:
-                        for activity in user_data['activities']:
-                            # Chuyển đổi start_time từ string sang datetime nếu cần
-                            activity_start_time = activity['start_time']
-                            if isinstance(activity_start_time, str):
-                                try:
-                                    activity_start_time = datetime.fromisoformat(activity_start_time)
-                                except ValueError:
-                                    continue
-                            
-                            # Kiểm tra ngày của hoạt động
-                            if activity_start_time.strftime("%Y%m%d") == current_date:
-                                activities.append({
-                                    'user_id': user_id,
-                                    'username': activity.get('username', 'Unknown'),
-                                    'full_name': activity.get('full_name', 'Unknown'),
-                                    'start_time': activity_start_time,
-                                    'end_time': activity.get('end_time', None),
-                                    'duration': activity.get('duration', 0),
-                                    'action': activity.get('action', 'Unknown'),
-                                    'status': activity.get('status', 'Unknown')
-                                })
-                
-                if not activities:
-                    continue
-                
-                # Tạo DataFrame
-                df = pd.DataFrame(activities)
-                
-                # Tính toán tổng thời gian và số lần hoạt động cho mỗi user
-                user_stats = df.groupby(['user_id', 'username', 'full_name']).agg({
-                    'duration': 'sum',  # Tổng thời gian
-                    'start_time': 'count'  # Số lần hoạt động
-                }).reset_index()
-                
-                user_stats.columns = ['user_id', 'username', 'full_name', 'total_duration', 'activity_count']
-                
-                # Sắp xếp theo tổng thời gian giảm dần
-                user_stats = user_stats.sort_values('total_duration', ascending=False)
-                
-                # Tạo file Excel
-                with pd.ExcelWriter(full_path, engine='openpyxl') as writer:
-                    # Sheet chi tiết hoạt động
-                    df.to_excel(writer, sheet_name='Chi tiết hoạt động', index=False)
-                    
-                    # Sheet thống kê theo user
-                    user_stats.to_excel(writer, sheet_name='Thống kê theo user', index=False)
-                    
-                    # Định dạng cột thời gian
-                    for sheet in writer.sheets.values():
-                        for col in ['start_time', 'end_time']:
-                            if col in sheet.columns:
-                                for cell in sheet[col]:
-                                    if cell.value:
-                                        cell.number_format = 'hh:mm:ss'
-                
-                # Gửi báo cáo đến nhóm được chỉ định
-                try:
-                    with open(full_path, 'rb') as f:
-                        await context.bot.send_document(
-                            chat_id=report_group_id,
-                            document=f,
-                            filename=filename,
-                            caption=f'📊 Báo cáo hoạt động ngày {current_date} - Nhóm {group_name}'
-                        )
-                    logging.info(f"Report sent successfully to group {group_name}")
-                except Exception as e:
-                    logging.error(f"Error sending report to group {group_name}: {e}")
-                
-            except Exception as e:
-                logging.error(f"Error generating report for group {group_id}: {e}")
-                continue
-                
-    except Exception as e:
-        logging.error(f"Error in send_daily_reports_job: {e}")
-
-async def safe_send_message(bot, chat_id, text, reply_to_message_id=None):
-    while True:
-        try:
-            await bot.send_message(chat_id=chat_id, text=text, reply_to_message_id=reply_to_message_id)
-            break
-        except telegram.error.RetryAfter as e:
-            await asyncio.sleep(e.retry_after)
-        except Exception as ex:
-            logging.error(f"Error sending message: {ex}")
-            break
-
-async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for member in update.message.new_chat_members:
-        await update.message.reply_text(
-            f"👋 Chào mừng {member.full_name}!\n"
-            "Vui lòng chọn hoạt động của bạn:",
-            reply_markup=activity_keyboard
-        )
-
-async def bot_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.my_chat_member.new_chat_member.status == "member":
-        chat_id = update.effective_chat.id
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="🤖 Bot đã sẵn sàng!\nVui lòng chọn hoạt động của bạn:",
-            reply_markup=activity_keyboard
-        )
-        # Gửi bàn phím cho tất cả thành viên
-        await send_keyboard_to_all_members(chat_id, context)
-
-async def send_keyboard_to_all_members(chat_id, context):
-    """Gửi bàn phím cho tất cả thành viên trong nhóm."""
-    try:
-        # Lấy danh sách thành viên trong nhóm
-        chat_members = await context.bot.get_chat_administrators(chat_id)
-        for member in chat_members:
-            try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="🤖 Chọn hoạt động của bạn:",
-                    reply_markup=activity_keyboard
-                )
-                break  # Chỉ gửi một lần trong nhóm
-            except Exception as e:
-                logging.error(f"Error sending keyboard to member {member.user.id}: {e}")
-    except Exception as e:
-        logging.error(f"Error getting chat members: {e}")
-
-async def show_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 Chọn hoạt động của bạn:",
-        reply_markup=activity_keyboard
-    )
-
-def get_current_time():
-    """Get current time in UTC+7."""
-    utc_plus_7 = pytz.timezone('Asia/Bangkok')
-    return datetime.now(utc_plus_7)
-
-async def check_time_violations(context: ContextTypes.DEFAULT_TYPE):
-    """Check for time violations."""
-    now = get_current_time()
-    for user_id, state in list(user_states.items()):
-        if state['status'] == 'active':
-            start_time = state['start_time']
-            action = state['action']
-            time_limit = TIME_LIMITS[action]
-            duration = (now - start_time).total_seconds() / 60
-            
-            if duration > time_limit:
-                try:
-                    chat_id = state['chat_id']
-                    user_name = state.get('user_name', 'Unknown')
-                    record_activity(chat_id, user_id, user_name, action, start_time, now, duration)
-                    await safe_send_message(
-                        context.bot, chat_id,
-                        f'⛔ VI PHẠM THỜI GIAN!\n'
-                        f'Hành động: {action}\n'
-                        f'Thời gian cho phép: {time_limit} phút\n'
-                        f'Thời gian thực tế: {duration:.1f} phút\n'
-                        f'Đã ghi nhận vi phạm vào báo cáo.'
-                    )
-                    del user_states[user_id]
-                except Exception as e:
-                    logging.error(f"Error handling time violation: {e}")
-
-async def set_report_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Set the group that will receive daily reports."""
-    if not is_superadmin(update.effective_user.id, update.effective_chat.id):
-        await update.message.reply_text('❌ Chỉ superadmin mới có thể sử dụng lệnh này.')
-        return
-
-    group_id = update.effective_chat.id
-    
-    # Kiểm tra xem nhóm đã được cấu hình chưa
-    if group_id not in group_settings:
-        await update.message.reply_text('❌ Nhóm này chưa được cấu hình. Vui lòng sử dụng lệnh /start trước.')
-        return
-
-    # Nếu không có tham số, sử dụng ID của nhóm hiện tại
-    if not context.args:
-        report_group_id = group_id
-    else:
-        try:
-            report_group_id = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text('❌ ID không hợp lệ. Vui lòng nhập số.')
+        if user_id not in user_states:
             return
-
-    # Cập nhật cấu hình
-    group_settings[group_id]['report_group_id'] = report_group_id
-    save_group_settings()
-    
-    if report_group_id == group_id:
-        await update.message.reply_text(f'✅ Đã cấu hình nhóm hiện tại ({group_id}) làm nhóm nhận báo cáo.')
-    else:
-        await update.message.reply_text(f'✅ Đã cấu hình nhóm nhận báo cáo với ID: {report_group_id}')
+        
+        start_time = user_states[user_id]['start_time']
+        end_time = start_time + timedelta(minutes=time_limit)
+        now = datetime.now()
+        
+        remaining = (end_time - now).total_seconds()
+        
+        if remaining > 60:
+            wait_time = remaining - 60
+            await asyncio.sleep(wait_time)
+            
+            if user_id not in user_states or user_states[user_id]['status'] != 'active':
+                return
+                
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⚠️⏳ CẢNH BÁO: Hoạt động {action} còn 1 phút nữa sẽ hết thời gian cho phép!",
+                reply_to_message_id=message_id
+            )
+            remaining = 60
+        
+        if remaining > 20:
+            wait_time = remaining - 20
+            await asyncio.sleep(wait_time)
+            
+            if user_id not in user_states or user_states[user_id]['status'] != 'active':
+                return
+                
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f'🚨 CẢNH BÁO KHẨN CẤP: Hoạt động {action} chỉ còn 20 giây nữa!\nẤn quay về ngay lập tức!',
+                reply_to_message_id=message_id
+            )
+            remaining = 20
+        
+        await asyncio.sleep(remaining)
+        
+        if user_id in user_states and user_states[user_id]['status'] == 'active':
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f'⏰ ĐÃ HẾT THỜI GIAN CHO PHÉP!\nHoạt động: {action}\nThời gian cho phép: {time_limit} phút\nVui lòng ấn nút "Quay về" để kết thúc hoạt động.',
+                reply_to_message_id=message_id
+            )
+            
+    except Exception as e:
+        logging.error(f"Error in update_countdown: {e}")
 
 def main():
     """Start the bot."""
-    # Create the Application
     application = Application.builder().token(os.getenv('TELEGRAM_TOKEN')).build()
 
-    # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("report", report))
     application.add_handler(CommandHandler("addadmin", add_admin))
     application.add_handler(CommandHandler("removeadmin", remove_admin))
     application.add_handler(CommandHandler("listadmin", list_admins))
-    application.add_handler(CommandHandler("keyboard", show_keyboard))
-    application.add_handler(CommandHandler("setreportgroup", set_report_group))
-    
-    # Handler cho thành viên mới và bot được thêm vào nhóm
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
-    application.add_handler(ChatMemberHandler(bot_added_to_group, chat_member_types=ChatMemberHandler.MY_CHAT_MEMBER))
-    
-    # Thêm handler cho các nút hoạt động (đặt sau các handler khác)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_activity_button))
 
-    # Lên lịch gửi báo cáo lúc 23:59 mỗi ngày (UTC+7)
-    utc_plus_7 = pytz.timezone('Asia/Bangkok')
-    report_time = time(hour=23, minute=59, second=0, tzinfo=utc_plus_7)
-    
-    # Thêm job gửi báo cáo với các tham số
-    application.job_queue.run_daily(
-        send_daily_reports_job,
-        time=report_time,
-        name='daily_report',
-        days=(0, 1, 2, 3, 4, 5, 6),  # Chạy tất cả các ngày trong tuần
-        job_kwargs={
-            'misfire_grace_time': 300,  # Cho phép chạy muộn tối đa 5 phút
-            'replace_existing': True    # Thay thế job cũ nếu có
-        }
-    )
-    
-    # Log thông tin về job
-    logging.info(f"Daily report job scheduled for {report_time.strftime('%H:%M:%S')} UTC+7")
-    logging.info(f"Current timezone: {datetime.now(utc_plus_7).tzinfo}")
-
-    # Start the Bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
