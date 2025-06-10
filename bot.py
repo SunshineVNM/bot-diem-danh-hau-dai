@@ -440,6 +440,17 @@ async def handle_activity_button(update: Update, context: ContextTypes.DEFAULT_T
             )
             save_user_states()
 
+async def keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send keyboard when /keyboard command is issued."""
+    if update.effective_chat.type == 'private':
+        await update.message.reply_text('❌ Bot này chỉ hoạt động trong nhóm.')
+        return
+
+    await update.message.reply_text(
+        '⌨️ Bàn phím hoạt động:',
+        reply_markup=activity_keyboard
+    )
+
 def record_activity(group_id, user_id, user_name, action, start_time, end_time, duration):
     """Record activity in Excel file."""
     success = False
@@ -656,6 +667,7 @@ def main():
     application.add_handler(CommandHandler("addadmin", add_admin))
     application.add_handler(CommandHandler("removeadmin", remove_admin))
     application.add_handler(CommandHandler("listadmin", list_admins))
+    application.add_handler(CommandHandler("keyboard", keyboard))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_activity_button))
 
     # Lên lịch gửi báo cáo lúc 23:59 mỗi ngày (UTC+7)
